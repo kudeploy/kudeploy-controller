@@ -74,6 +74,12 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 	if controllerutil.AddFinalizer(project, projectFinalizer) {
 		if err := r.Update(ctx, project); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		if err := r.Get(ctx, req.NamespacedName, project); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -91,6 +97,9 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			},
 		}
 		if err := r.Create(ctx, namespace); err != nil {
+			if apierrors.IsAlreadyExists(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, r.updateProjectStatus(ctx, project, metav1.Condition{
@@ -152,9 +161,10 @@ func (r *ProjectReconciler) reconcileDelete(ctx context.Context, project *kudepl
 }
 
 func (r *ProjectReconciler) updateProjectStatus(ctx context.Context, project *kudeployv1alpha1.Project, condition metav1.Condition) error {
+	original := project.DeepCopy()
 	project.Status.NamespaceName = project.Name
 	meta.SetStatusCondition(&project.Status.Conditions, condition)
-	return r.Status().Update(ctx, project)
+	return ignoreConflict(r.Status().Patch(ctx, project, client.MergeFrom(original)))
 }
 
 func isManagedNamespace(namespace *corev1.Namespace, projectName string) bool {

@@ -85,6 +85,12 @@ func (r *BuildRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 
 	if ensureBuildRunMetadata(buildRun) {
 		if err := r.Update(ctx, buildRun); err != nil {
+			if apierrors.IsConflict(err) {
+				return ctrl.Result{Requeue: true}, nil
+			}
+			return ctrl.Result{}, err
+		}
+		if err := r.Get(ctx, req.NamespacedName, buildRun); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -178,7 +184,10 @@ func (r *BuildRunReconciler) createPipelineRun(ctx context.Context, desired *tek
 	current := &tektonv1.PipelineRun{}
 	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) {
+			return err
+		}
+		return nil
 	}
 	return err
 }
@@ -192,10 +201,11 @@ func (r *BuildRunReconciler) deleteIfExists(ctx context.Context, object client.O
 }
 
 func (r *BuildRunReconciler) updateBuildRunStatus(ctx context.Context, buildRun *kudeployv1alpha1.BuildRun, condition metav1.Condition) error {
+	original := buildRun.DeepCopy()
 	buildRun.Status.PipelineRunName = buildRun.Name
 	buildRun.Status.ServiceAccountName = serviceAccountNameFor(buildRun.Name)
 	meta.SetStatusCondition(&buildRun.Status.Conditions, condition)
-	return r.Status().Update(ctx, buildRun)
+	return ignoreConflict(r.Status().Patch(ctx, buildRun, client.MergeFrom(original)))
 }
 
 func ensureBuildRunMetadata(buildRun *kudeployv1alpha1.BuildRun) bool {

@@ -2,4 +2,6 @@
 resources:
 - v1alpha1_project.yaml
 - v1alpha1_buildrun.yaml
+- v1alpha1_service.yaml
+- v1alpha1_deployment.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

@@ -1,0 +1,12 @@
+apiVersion: kudeploy.com/v1alpha1
+kind: Deployment
+metadata:
+  name: whoami-00001
+  namespace: whoami
+spec:
+  serviceName: whoami
+  version: 1
+  image: ghcr.io/kudeploy/whoami:latest
+  ports:
+    - port: 80
+      targetPort: 80

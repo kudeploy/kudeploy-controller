@@ -4,6 +4,8 @@
 resources:
 - bases/kudeploy.com_projects.yaml
 - bases/kudeploy.com_buildruns.yaml
+- bases/kudeploy.com_services.yaml
+- bases/kudeploy.com_deployments.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

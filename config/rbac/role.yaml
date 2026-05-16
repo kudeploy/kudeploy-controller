@@ -9,6 +9,7 @@ rules:
   resources:
   - namespaces
   - serviceaccounts
+  - services
   verbs:
   - create
   - delete
@@ -26,10 +27,24 @@ rules:
   - list
   - watch
 - apiGroups:
+  - apps
+  resources:
+  - deployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
   - kudeploy.com
   resources:
   - buildruns
+  - deployments
   - projects
+  - services
   verbs:
   - create
   - delete
@@ -42,14 +57,18 @@ rules:
   - kudeploy.com
   resources:
   - buildruns/finalizers
+  - deployments/finalizers
   - projects/finalizers
+  - services/finalizers
   verbs:
   - update
 - apiGroups:
   - kudeploy.com
   resources:
   - buildruns/status
+  - deployments/status
   - projects/status
+  - services/status
   verbs:
   - get
   - patch
