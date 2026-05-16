@@ -35,9 +35,29 @@ type DeploymentSpec struct {
 	// +required
 	ServiceAccountName string `json:"serviceAccountName"`
 
+	// replicas is the desired number of instances captured for this Deployment version.
+	// When omitted, 1 is used. Set to 0 to scale this Deployment to zero.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Replicas *int32 `json:"replicas,omitempty"`
+
 	// image is the container image to run.
 	// +required
 	Image string `json:"image"`
+
+	// command overrides the container entrypoint captured for this Deployment version.
+	// +optional
+	// +listType=atomic
+	Command []string `json:"command,omitempty"`
+
+	// args overrides the container arguments captured for this Deployment version.
+	// +optional
+	// +listType=atomic
+	Args []string `json:"args,omitempty"`
+
+	// resources describes compute resource requests and limits captured for this Deployment version.
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// ports describe the network ports exposed by this Deployment.
 	// +required
@@ -55,6 +75,18 @@ type DeploymentSpec struct {
 	// +optional
 	// +listType=atomic
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// readinessProbe describes how Kubernetes determines whether the container is ready to receive traffic.
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// livenessProbe describes how Kubernetes determines whether the container should be restarted.
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// startupProbe describes how Kubernetes determines whether the container has started.
+	// +optional
+	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
 }
 
 // DeploymentStatus defines the observed state of Deployment.

@@ -4,7 +4,15 @@ metadata:
   name: whoami
   namespace: whoami
 spec:
+  replicas: 1
   image: ghcr.io/kudeploy/whoami:latest
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
   env:
     - name: LOG_LEVEL
       value: info
@@ -14,3 +22,15 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 80
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 80
+  startupProbe:
+    httpGet:
+      path: /
+      port: 80

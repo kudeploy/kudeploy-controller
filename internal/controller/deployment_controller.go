@@ -120,7 +120,6 @@ func (r *DeploymentReconciler) createOrUpdateKubernetesDeployment(ctx context.Co
 	}
 	original := current.DeepCopy()
 
-	desired.Spec.Replicas = current.Spec.Replicas
 	desired.Spec.Selector = current.Spec.Selector
 	desired.Labels = mergeManagedLabels(desired.Labels, current.Labels)
 	desired.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
@@ -247,7 +246,7 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas:             ptrInt32(1),
+			Replicas:             replicasFor(deployment),
 			RevisionHistoryLimit: ptrInt32(0),
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
@@ -271,15 +270,28 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 							Name:            deployment.Spec.ServiceName,
 							Image:           deployment.Spec.Image,
 							ImagePullPolicy: corev1.PullAlways,
+							Command:         deployment.Spec.Command,
+							Args:            deployment.Spec.Args,
+							Resources:       deployment.Spec.Resources,
 							Env:             deployment.Spec.Env,
 							EnvFrom:         containerEnvFromFor(deployment),
 							Ports:           containerPortsFor(deployment.Spec.Ports),
+							ReadinessProbe:  deployment.Spec.ReadinessProbe,
+							LivenessProbe:   deployment.Spec.LivenessProbe,
+							StartupProbe:    deployment.Spec.StartupProbe,
 						},
 					},
 				},
 			},
 		},
 	}
+}
+
+func replicasFor(deployment *kudeployv1alpha1.Deployment) *int32 {
+	if deployment.Spec.Replicas == nil {
+		return ptrInt32(1)
+	}
+	return deployment.Spec.Replicas
 }
 
 func containerEnvFromFor(deployment *kudeployv1alpha1.Deployment) []corev1.EnvFromSource {

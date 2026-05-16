@@ -23,9 +23,11 @@ import (
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -71,7 +73,20 @@ var _ = Describe("Service Controller", func() {
 				Generation: 1,
 			},
 			Spec: kudeployv1alpha1.ServiceSpec{
-				Image: "ghcr.io/kudeploy/whoami:latest",
+				Replicas: ptrInt32(2),
+				Image:    "ghcr.io/kudeploy/whoami:latest",
+				Command:  []string{"/whoami"},
+				Args:     []string{"--port=8080"},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("50m"),
+						corev1.ResourceMemory: resource.MustParse("64Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("250m"),
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+					},
+				},
 				Env: []corev1.EnvVar{
 					{Name: "LOG_LEVEL", Value: "debug"},
 				},
@@ -84,6 +99,30 @@ var _ = Describe("Service Controller", func() {
 				},
 				Ports: []kudeployv1alpha1.ServicePort{
 					{Port: 80, TargetPort: 8080},
+				},
+				ReadinessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/ready",
+							Port: intstr.FromInt32(8080),
+						},
+					},
+				},
+				LivenessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/live",
+							Port: intstr.FromInt32(8080),
+						},
+					},
+				},
+				StartupProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/startup",
+							Port: intstr.FromInt32(8080),
+						},
+					},
 				},
 			},
 		}
@@ -105,7 +144,14 @@ var _ = Describe("Service Controller", func() {
 		Expect(kudeployDeployment.Spec.ServiceName).To(Equal(serviceName))
 		Expect(kudeployDeployment.Spec.Version).To(Equal(int64(1)))
 		Expect(kudeployDeployment.Spec.ServiceAccountName).To(Equal("service-whoami"))
+		Expect(kudeployDeployment.Spec.Replicas).To(Equal(ptrInt32(2)))
 		Expect(kudeployDeployment.Spec.Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
+		Expect(kudeployDeployment.Spec.Command).To(Equal([]string{"/whoami"}))
+		Expect(kudeployDeployment.Spec.Args).To(Equal([]string{"--port=8080"}))
+		Expect(kudeployDeployment.Spec.Resources.Requests.Cpu().String()).To(Equal("50m"))
+		Expect(kudeployDeployment.Spec.Resources.Requests.Memory().String()).To(Equal("64Mi"))
+		Expect(kudeployDeployment.Spec.Resources.Limits.Cpu().String()).To(Equal("250m"))
+		Expect(kudeployDeployment.Spec.Resources.Limits.Memory().String()).To(Equal("128Mi"))
 		Expect(kudeployDeployment.Spec.Env).To(ConsistOf(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
 		Expect(kudeployDeployment.Spec.EnvFrom).To(ConsistOf(corev1.EnvFromSource{
 			ConfigMapRef: &corev1.ConfigMapEnvSource{
@@ -113,6 +159,9 @@ var _ = Describe("Service Controller", func() {
 			},
 		}))
 		Expect(kudeployDeployment.Spec.Ports).To(ConsistOf(kudeployv1alpha1.ServicePort{Port: 80, TargetPort: 8080}))
+		Expect(kudeployDeployment.Spec.ReadinessProbe.HTTPGet.Path).To(Equal("/ready"))
+		Expect(kudeployDeployment.Spec.LivenessProbe.HTTPGet.Path).To(Equal("/live"))
+		Expect(kudeployDeployment.Spec.StartupProbe.HTTPGet.Path).To(Equal("/startup"))
 
 		serviceEnvSecret := &corev1.Secret{}
 		Expect(reconciler.Get(ctx, types.NamespacedName{Name: "service-whoami-env", Namespace: namespaceName}, serviceEnvSecret)).To(Succeed())

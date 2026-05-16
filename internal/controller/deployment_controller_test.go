@@ -24,9 +24,11 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -88,7 +90,20 @@ var _ = Describe("Deployment Controller", func() {
 				ServiceName:        serviceName,
 				Version:            1,
 				ServiceAccountName: "service-whoami",
+				Replicas:           ptrInt32(0),
 				Image:              "ghcr.io/kudeploy/whoami:latest",
+				Command:            []string{"/whoami"},
+				Args:               []string{"--port=8080"},
+				Resources: corev1.ResourceRequirements{
+					Requests: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("50m"),
+						corev1.ResourceMemory: resource.MustParse("64Mi"),
+					},
+					Limits: corev1.ResourceList{
+						corev1.ResourceCPU:    resource.MustParse("250m"),
+						corev1.ResourceMemory: resource.MustParse("128Mi"),
+					},
+				},
 				Env: []corev1.EnvVar{
 					{Name: "LOG_LEVEL", Value: "debug"},
 				},
@@ -101,6 +116,30 @@ var _ = Describe("Deployment Controller", func() {
 				},
 				Ports: []kudeployv1alpha1.ServicePort{
 					{Port: 80, TargetPort: 8080},
+				},
+				ReadinessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/ready",
+							Port: intstr.FromInt32(8080),
+						},
+					},
+				},
+				LivenessProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/live",
+							Port: intstr.FromInt32(8080),
+						},
+					},
+				},
+				StartupProbe: &corev1.Probe{
+					ProbeHandler: corev1.ProbeHandler{
+						HTTPGet: &corev1.HTTPGetAction{
+							Path: "/startup",
+							Port: intstr.FromInt32(8080),
+						},
+					},
 				},
 			},
 		}
@@ -119,7 +158,7 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Labels).To(HaveKeyWithValue("kudeploy.com/service", serviceName))
 		Expect(kubernetesDeployment.Labels).To(HaveKeyWithValue("kudeploy.com/deployment", deploymentName))
 		Expect(kubernetesDeployment.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "kudeploy"))
-		Expect(kubernetesDeployment.Spec.Replicas).To(Equal(ptrInt32(1)))
+		Expect(kubernetesDeployment.Spec.Replicas).To(Equal(ptrInt32(0)))
 		Expect(kubernetesDeployment.Spec.RevisionHistoryLimit).To(Equal(ptrInt32(0)))
 		Expect(kubernetesDeployment.Spec.Strategy.Type).To(Equal(appsv1.RollingUpdateDeploymentStrategyType))
 		Expect(kubernetesDeployment.Spec.Strategy.RollingUpdate).NotTo(BeNil())
@@ -136,6 +175,12 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Name).To(Equal(serviceName))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Command).To(Equal([]string{"/whoami"}))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"--port=8080"}))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("50m"))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Resources.Requests.Memory().String()).To(Equal("64Mi"))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Resources.Limits.Cpu().String()).To(Equal("250m"))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String()).To(Equal("128Mi"))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].EnvFrom).To(ConsistOf(
 			corev1.EnvFromSource{
@@ -150,6 +195,9 @@ var _ = Describe("Deployment Controller", func() {
 			},
 		))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Ports).To(ConsistOf(corev1.ContainerPort{ContainerPort: 8080}))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].ReadinessProbe.HTTPGet.Path).To(Equal("/ready"))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].LivenessProbe.HTTPGet.Path).To(Equal("/live"))
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].StartupProbe.HTTPGet.Path).To(Equal("/startup"))
 		Expect(kubernetesDeployment.OwnerReferences).To(HaveLen(1))
 		Expect(kubernetesDeployment.OwnerReferences[0].Name).To(Equal(deploymentName))
 
@@ -176,7 +224,7 @@ var _ = Describe("Deployment Controller", func() {
 		)))
 	})
 
-	It("preserves scale, selector, and external metadata on existing Kubernetes Deployments", func() {
+	It("preserves selector and external metadata on existing Kubernetes Deployments while applying desired replicas", func() {
 		deployment := newDeployment()
 		existing := buildKubernetesDeployment(deployment)
 		existing.Labels["team"] = "platform"
@@ -206,7 +254,7 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Labels).To(HaveKeyWithValue("team", "platform"))
 		Expect(kubernetesDeployment.Labels).To(HaveKeyWithValue(deploymentLabel, deploymentName))
 		Expect(kubernetesDeployment.Annotations).To(HaveKeyWithValue("kubectl.kubernetes.io/restartedAt", "2026-05-16T00:00:00Z"))
-		Expect(kubernetesDeployment.Spec.Replicas).To(Equal(ptrInt32(3)))
+		Expect(kubernetesDeployment.Spec.Replicas).To(Equal(ptrInt32(0)))
 		Expect(kubernetesDeployment.Spec.Selector.MatchLabels).To(Equal(map[string]string{
 			"existing-selector": "kept",
 		}))
@@ -214,6 +262,19 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Spec.Template.Labels).To(HaveKeyWithValue(deploymentLabel, deploymentName))
 		Expect(kubernetesDeployment.Spec.Template.Annotations).To(HaveKeyWithValue("kubectl.kubernetes.io/restartedAt", "2026-05-16T00:00:00Z"))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/kudeploy/whoami:v2"))
+	})
+
+	It("defaults Kubernetes Deployment replicas to one", func() {
+		deployment := newDeployment()
+		deployment.Spec.Replicas = nil
+		reconciler := newReconciler(deployment)
+
+		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: deploymentKey})
+		Expect(err).NotTo(HaveOccurred())
+
+		kubernetesDeployment := &appsv1.Deployment{}
+		Expect(reconciler.Get(ctx, deploymentKey, kubernetesDeployment)).To(Succeed())
+		Expect(kubernetesDeployment.Spec.Replicas).To(Equal(ptrInt32(1)))
 	})
 
 	It("does not overwrite an existing env Secret clone", func() {

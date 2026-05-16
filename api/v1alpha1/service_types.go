@@ -23,9 +23,29 @@ import (
 
 // ServiceSpec defines the desired state of Service.
 type ServiceSpec struct {
+	// replicas is the desired number of instances. When omitted, 1 is used.
+	// Set to 0 to scale the Service to zero.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	Replicas *int32 `json:"replicas,omitempty"`
+
 	// image is the container image to run.
 	// +required
 	Image string `json:"image"`
+
+	// command overrides the container entrypoint.
+	// +optional
+	// +listType=atomic
+	Command []string `json:"command,omitempty"`
+
+	// args overrides the container arguments.
+	// +optional
+	// +listType=atomic
+	Args []string `json:"args,omitempty"`
+
+	// resources describes compute resource requests and limits for the container.
+	// +optional
+	Resources corev1.ResourceRequirements `json:"resources,omitempty"`
 
 	// ports describe the network ports exposed by this Service.
 	// +required
@@ -44,6 +64,18 @@ type ServiceSpec struct {
 	// +optional
 	// +listType=atomic
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// readinessProbe describes how Kubernetes determines whether the container is ready to receive traffic.
+	// +optional
+	ReadinessProbe *corev1.Probe `json:"readinessProbe,omitempty"`
+
+	// livenessProbe describes how Kubernetes determines whether the container should be restarted.
+	// +optional
+	LivenessProbe *corev1.Probe `json:"livenessProbe,omitempty"`
+
+	// startupProbe describes how Kubernetes determines whether the container has started.
+	// +optional
+	StartupProbe *corev1.Probe `json:"startupProbe,omitempty"`
 }
 
 // ServicePort describes one exposed Service port.

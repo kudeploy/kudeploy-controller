@@ -348,6 +348,7 @@ data:
 			)
 			expectKubernetesServiceSelector("whoami-00001")
 			expectDeploymentImageAndPolicy("whoami-00001", serviceE2EFirstImage)
+			expectDeploymentRuntimeConfig("whoami-00001", "1")
 			expectDeploymentEnv("whoami-00001", "LOG_LEVEL", "e2e")
 			expectDeploymentEnvFromConfigMap("whoami-00001", "whoami-config")
 			expectDeploymentEnvSecret("whoami-00001", "whoami-00001-env")
@@ -391,6 +392,7 @@ data:
 			)
 			expectKubernetesServiceSelector("whoami-00003")
 			expectDeploymentImageAndPolicy("whoami-00003", serviceE2ESecondImage)
+			expectDeploymentRuntimeConfig("whoami-00003", "1")
 			expectDeploymentEnv("whoami-00003", "LOG_LEVEL", "e2e")
 			expectDeploymentEnvFromConfigMap("whoami-00003", "whoami-config")
 			expectDeploymentEnvSecret("whoami-00003", "whoami-00003-env")
@@ -538,7 +540,15 @@ metadata:
   name: %s
   namespace: %s
 spec:
+  replicas: 1
   image: %s
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
   env:
     - name: LOG_LEVEL
       value: e2e
@@ -548,6 +558,18 @@ spec:
   ports:
     - port: 80
       targetPort: 80
+  readinessProbe:
+    httpGet:
+      path: /
+      port: 80
+  livenessProbe:
+    httpGet:
+      path: /
+      port: 80
+  startupProbe:
+    httpGet:
+      path: /
+      port: 80
 `, serviceE2EName, serviceE2EProjectName, image)
 }
 
@@ -607,6 +629,27 @@ func expectDeploymentImageAndPolicy(deploymentName, image string) {
 	output, err = utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(output).To(Equal("Always"))
+}
+
+func expectDeploymentRuntimeConfig(deploymentName, replicas string) {
+	expectDeploymentJSONPath(deploymentName, "{.spec.replicas}", replicas)
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].resources.requests.cpu}", "10m")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].resources.requests.memory}", "32Mi")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].resources.limits.cpu}", "100m")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].resources.limits.memory}", "128Mi")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].readinessProbe.httpGet.path}", "/")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].livenessProbe.httpGet.path}", "/")
+	expectDeploymentJSONPath(deploymentName, "{.spec.template.spec.containers[0].startupProbe.httpGet.path}", "/")
+}
+
+func expectDeploymentJSONPath(deploymentName, jsonPath, expectedValue string) {
+	cmd := exec.Command("kubectl", "get", "deployment", deploymentName,
+		"-n", serviceE2EProjectName,
+		"-o", fmt.Sprintf("jsonpath=%s", jsonPath),
+	)
+	output, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(output).To(Equal(expectedValue))
 }
 
 func expectDeploymentEnv(deploymentName, envName, expectedValue string) {

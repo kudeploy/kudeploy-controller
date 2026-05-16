@@ -327,10 +327,17 @@ func buildKudeployDeployment(service *kudeployv1alpha1.Service, version int64, n
 			ServiceName:        service.Name,
 			Version:            version,
 			ServiceAccountName: runtimeServiceAccountNameFor(service.Name),
+			Replicas:           service.Spec.Replicas,
 			Image:              service.Spec.Image,
+			Command:            service.Spec.Command,
+			Args:               service.Spec.Args,
+			Resources:          service.Spec.Resources,
 			Ports:              service.Spec.Ports,
 			Env:                service.Spec.Env,
 			EnvFrom:            service.Spec.EnvFrom,
+			ReadinessProbe:     service.Spec.ReadinessProbe,
+			LivenessProbe:      service.Spec.LivenessProbe,
+			StartupProbe:       service.Spec.StartupProbe,
 		},
 	}
 }
