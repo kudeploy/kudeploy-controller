@@ -198,4 +198,14 @@ var _ = Describe("BuildRun Controller", func() {
 		Expect(errors.IsNotFound(reconciler.Get(ctx, types.NamespacedName{Name: serviceAccount.Name, Namespace: namespaceName}, &corev1.ServiceAccount{}))).To(BeTrue())
 		Expect(errors.IsNotFound(reconciler.Get(ctx, buildRunKey, &tektonv1.PipelineRun{}))).To(BeTrue())
 	})
+
+	It("keeps generated ServiceAccount names deterministic and within the Kubernetes name limit", func() {
+		Expect(serviceAccountNameFor("whoami")).To(Equal("buildrun-whoami"))
+
+		longName := "this-is-a-very-long-buildrun-name-that-still-needs-serviceaccount"
+		generatedName := serviceAccountNameFor(longName)
+		Expect(len(generatedName)).To(BeNumerically("<=", 63))
+		Expect(generatedName).To(HavePrefix("buildrun-"))
+		Expect(generatedName).NotTo(Equal("buildrun-" + longName))
+	})
 })

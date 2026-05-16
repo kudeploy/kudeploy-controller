@@ -18,10 +18,7 @@ package controller
 
 import (
 	"context"
-	"crypto/md5" //nolint:gosec // Stable short names do not need cryptographic hashing.
-	"encoding/hex"
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -40,9 +37,6 @@ const (
 	serviceReadyCondition = "Ready"
 	serviceLabel          = "kudeploy.com/service"
 	deploymentLabel       = "kudeploy.com/deployment"
-
-	kubernetesNameMaxLength = 63
-	childNameHashLength     = 8
 )
 
 // ServiceReconciler reconciles a Service object.
@@ -416,25 +410,6 @@ func isKudeployDeploymentReady(deployment *kudeployv1alpha1.Deployment) bool {
 func serviceVersionName(serviceName string, version int64) string {
 	suffix := fmt.Sprintf("-%05d", version)
 	return childName(serviceName, suffix)
-}
-
-func childName(parent, suffix string) string {
-	if len(parent)+len(suffix) <= kubernetesNameMaxLength {
-		return parent + suffix
-	}
-
-	hash := md5.Sum([]byte(parent))
-	hashText := hex.EncodeToString(hash[:])[:childNameHashLength]
-	prefixLength := kubernetesNameMaxLength - len(suffix) - len(hashText) - 1
-	if prefixLength <= 0 {
-		return hashText + suffix
-	}
-
-	prefix := strings.TrimRight(parent[:prefixLength], "-")
-	if prefix == "" {
-		return hashText + suffix
-	}
-	return fmt.Sprintf("%s-%s%s", prefix, hashText, suffix)
 }
 
 func deploymentManagedLabels(namespace, serviceName, deploymentName string) map[string]string {

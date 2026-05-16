@@ -316,7 +316,7 @@ func buildPipelineRunParams(buildRun *kudeployv1alpha1.BuildRun) tektonv1.Params
 }
 
 func serviceAccountNameFor(buildRunName string) string {
-	return buildRunSAPrefix + buildRunName
+	return childName(buildRunSAPrefix+buildRunName, "")
 }
 
 func tektonStringParam(name, value string) tektonv1.Param {
