@@ -26,6 +26,16 @@ import (
 
 // BuildRunSpec defines the desired state of BuildRun
 type BuildRunSpec struct {
+	// context is the build context path within the checked-out repository.
+	// Defaults to ".".
+	// +optional
+	Context string `json:"context,omitempty"`
+
+	// dockerfile is the Dockerfile path relative to the build context.
+	// Defaults to "./Dockerfile".
+	// +optional
+	Dockerfile string `json:"dockerfile,omitempty"`
+
 	// repo describes the Git repository to build.
 	// +required
 	Repo BuildRunRepoSpec `json:"repo"`

@@ -45,6 +45,8 @@ const (
 	sourceWorkspaceName = "source"
 	sourceWorkspaceSize = "1Gi"
 	buildRunPodFSGroup  = int64(65532)
+	defaultBuildContext = "."
+	defaultDockerfile   = "./Dockerfile"
 
 	buildPipelineURL = "https://raw.githubusercontent.com/kudeploy/kudeploy-manifests/main/tekton/pipelines/build-and-push.yaml"
 )
@@ -266,6 +268,8 @@ func buildPipelineRun(buildRun *kudeployv1alpha1.BuildRun) *tektonv1.PipelineRun
 				tektonStringParam("git-url", buildRun.Spec.Repo.URL),
 				tektonStringParam("git-revision", buildRun.Spec.Repo.Revision),
 				tektonStringParam("image", fmt.Sprintf("%s:%s", buildRun.Spec.Image.Repository, buildRun.Spec.Image.Tag)),
+				tektonStringParam("context", buildContextFor(buildRun)),
+				tektonStringParam("dockerfile", dockerfileFor(buildRun)),
 			},
 			Workspaces: []tektonv1.WorkspaceBinding{
 				{
@@ -303,6 +307,20 @@ func tektonStringParam(name, value string) tektonv1.Param {
 		Name:  name,
 		Value: *tektonv1.NewStructuredValues(value),
 	}
+}
+
+func buildContextFor(buildRun *kudeployv1alpha1.BuildRun) string {
+	if buildRun.Spec.Context == "" {
+		return defaultBuildContext
+	}
+	return buildRun.Spec.Context
+}
+
+func dockerfileFor(buildRun *kudeployv1alpha1.BuildRun) string {
+	if buildRun.Spec.Dockerfile == "" {
+		return defaultDockerfile
+	}
+	return buildRun.Spec.Dockerfile
 }
 
 func ptrInt64(value int64) *int64 {

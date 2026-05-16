@@ -39,6 +39,16 @@ spec:
           spec:
             description: spec defines the desired state of BuildRun
             properties:
+              context:
+                description: |-
+                  context is the build context path within the checked-out repository.
+                  Defaults to ".".
+                type: string
+              dockerfile:
+                description: |-
+                  dockerfile is the Dockerfile path relative to the build context.
+                  Defaults to "./Dockerfile".
+                type: string
               image:
                 description: image describes the image destination for the build output.
                 properties:

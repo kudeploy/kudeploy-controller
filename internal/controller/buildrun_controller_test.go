@@ -71,6 +71,8 @@ var _ = Describe("BuildRun Controller", func() {
 				Namespace: namespaceName,
 			},
 			Spec: kudeployv1alpha1.BuildRunSpec{
+				Context:    "services/whoami",
+				Dockerfile: "Dockerfile.prod",
 				Repo: kudeployv1alpha1.BuildRunRepoSpec{
 					URL:      "https://github.com/kudeploy/whoami",
 					Revision: "main",
@@ -139,6 +141,8 @@ var _ = Describe("BuildRun Controller", func() {
 			tektonStringParam("git-url", "https://github.com/kudeploy/whoami"),
 			tektonStringParam("git-revision", "main"),
 			tektonStringParam("image", "ghcr.io/kudeploy/whoami:latest"),
+			tektonStringParam("context", "services/whoami"),
+			tektonStringParam("dockerfile", "Dockerfile.prod"),
 		))
 		Expect(pipelineRun.Spec.Workspaces).To(HaveLen(1))
 		Expect(pipelineRun.Spec.Workspaces[0].Name).To(Equal("source"))

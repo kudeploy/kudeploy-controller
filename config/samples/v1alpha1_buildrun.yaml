@@ -4,6 +4,8 @@ metadata:
   name: whoami-latest
   namespace: whoami
 spec:
+  context: .
+  dockerfile: ./Dockerfile
   repo:
     url: https://github.com/kudeploy/whoami
     revision: main
