@@ -73,10 +73,10 @@ var _ = Describe("BuildRun Controller", func() {
 			Spec: kudeployv1alpha1.BuildRunSpec{
 				Context:    "services/whoami",
 				Dockerfile: "Dockerfile.prod",
-				Repo: kudeployv1alpha1.BuildRunRepoSpec{
+				Git: kudeployv1alpha1.BuildRunGitSpec{
 					URL: "https://github.com/kudeploy/whoami",
 					SecretRef: &corev1.LocalObjectReference{
-						Name: "repo-credentials",
+						Name: "git-credentials",
 					},
 				},
 				Image: kudeployv1alpha1.BuildRunImageSpec{
@@ -103,7 +103,7 @@ var _ = Describe("BuildRun Controller", func() {
 		buildRun := newBuildRun()
 		reconciler := newReconciler(
 			buildRun,
-			newSecret("repo-credentials"),
+			newSecret("git-credentials"),
 			newSecret("image-credentials"),
 		)
 
@@ -116,7 +116,7 @@ var _ = Describe("BuildRun Controller", func() {
 		Expect(serviceAccount.Labels).To(HaveKeyWithValue("kudeploy.com/buildrun", buildRunName))
 		Expect(serviceAccount.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "kudeploy"))
 		Expect(serviceAccount.Secrets).To(ConsistOf(
-			corev1.ObjectReference{Name: "repo-credentials"},
+			corev1.ObjectReference{Name: "git-credentials"},
 			corev1.ObjectReference{Name: "image-credentials"},
 		))
 		Expect(serviceAccount.ImagePullSecrets).To(ConsistOf(
@@ -163,7 +163,7 @@ var _ = Describe("BuildRun Controller", func() {
 
 	It("does not create runtime resources when a referenced Secret is missing", func() {
 		buildRun := newBuildRun()
-		reconciler := newReconciler(buildRun, newSecret("repo-credentials"))
+		reconciler := newReconciler(buildRun, newSecret("git-credentials"))
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: buildRunKey})
 		Expect(err).NotTo(HaveOccurred())

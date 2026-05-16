@@ -49,6 +49,35 @@ spec:
                   dockerfile is the Dockerfile path relative to the build context.
                   Defaults to "./Dockerfile".
                 type: string
+              git:
+                description: git describes the Git repository to build.
+                properties:
+                  revision:
+                    description: |-
+                      revision is the Git revision to build, such as a branch, tag, or commit SHA.
+                      When omitted, the Git repository's default branch is used.
+                    type: string
+                  secretRef:
+                    description: secretRef references an optional Secret in the same
+                      namespace used for Git authentication.
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  url:
+                    description: url is the Git repository URL.
+                    type: string
+                required:
+                - url
+                type: object
               image:
                 description: image describes the image destination for the build output.
                 properties:
@@ -77,38 +106,9 @@ spec:
                 - repository
                 - tag
                 type: object
-              repo:
-                description: repo describes the Git repository to build.
-                properties:
-                  revision:
-                    description: |-
-                      revision is the Git revision to build, such as a branch, tag, or commit SHA.
-                      When omitted, the Git repository's default branch is used.
-                    type: string
-                  secretRef:
-                    description: secretRef references an optional Secret in the same
-                      namespace used for Git authentication.
-                    properties:
-                      name:
-                        default: ""
-                        description: |-
-                          Name of the referent.
-                          This field is effectively required, but due to backwards compatibility is
-                          allowed to be empty. Instances of this type with an empty value here are
-                          almost certainly wrong.
-                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
-                        type: string
-                    type: object
-                    x-kubernetes-map-type: atomic
-                  url:
-                    description: url is the Git repository URL.
-                    type: string
-                required:
-                - url
-                type: object
             required:
+            - git
             - image
-            - repo
             type: object
           status:
             description: status defines the observed state of BuildRun

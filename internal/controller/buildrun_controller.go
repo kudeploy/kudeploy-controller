@@ -142,7 +142,7 @@ func (r *BuildRunReconciler) reconcileDelete(ctx context.Context, buildRun *kude
 }
 
 func (r *BuildRunReconciler) missingSecret(ctx context.Context, buildRun *kudeployv1alpha1.BuildRun) (string, error) {
-	for _, secretRef := range []*corev1.LocalObjectReference{buildRun.Spec.Repo.SecretRef, buildRun.Spec.Image.SecretRef} {
+	for _, secretRef := range []*corev1.LocalObjectReference{buildRun.Spec.Git.SecretRef, buildRun.Spec.Image.SecretRef} {
 		if secretRef == nil || secretRef.Name == "" {
 			continue
 		}
@@ -221,8 +221,8 @@ func ensureBuildRunMetadata(buildRun *kudeployv1alpha1.BuildRun) bool {
 func buildServiceAccount(buildRun *kudeployv1alpha1.BuildRun) *corev1.ServiceAccount {
 	secrets := make([]corev1.ObjectReference, 0, 2)
 	imagePullSecrets := make([]corev1.LocalObjectReference, 0, 1)
-	if buildRun.Spec.Repo.SecretRef != nil && buildRun.Spec.Repo.SecretRef.Name != "" {
-		secrets = append(secrets, corev1.ObjectReference{Name: buildRun.Spec.Repo.SecretRef.Name})
+	if buildRun.Spec.Git.SecretRef != nil && buildRun.Spec.Git.SecretRef.Name != "" {
+		secrets = append(secrets, corev1.ObjectReference{Name: buildRun.Spec.Git.SecretRef.Name})
 	}
 	if buildRun.Spec.Image.SecretRef != nil && buildRun.Spec.Image.SecretRef.Name != "" {
 		secrets = append(secrets, corev1.ObjectReference{Name: buildRun.Spec.Image.SecretRef.Name})
@@ -294,13 +294,13 @@ func buildRunManagedLabels(buildRun *kudeployv1alpha1.BuildRun) map[string]strin
 
 func buildPipelineRunParams(buildRun *kudeployv1alpha1.BuildRun) tektonv1.Params {
 	params := tektonv1.Params{
-		tektonStringParam("git-url", buildRun.Spec.Repo.URL),
+		tektonStringParam("git-url", buildRun.Spec.Git.URL),
 		tektonStringParam("image", fmt.Sprintf("%s:%s", buildRun.Spec.Image.Repository, buildRun.Spec.Image.Tag)),
 		tektonStringParam("context", buildContextFor(buildRun)),
 		tektonStringParam("dockerfile", dockerfileFor(buildRun)),
 	}
-	if buildRun.Spec.Repo.Revision != "" {
-		params = append(params, tektonStringParam("git-revision", buildRun.Spec.Repo.Revision))
+	if buildRun.Spec.Git.Revision != "" {
+		params = append(params, tektonStringParam("git-revision", buildRun.Spec.Git.Revision))
 	}
 	return params
 }

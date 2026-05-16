@@ -36,17 +36,17 @@ type BuildRunSpec struct {
 	// +optional
 	Dockerfile string `json:"dockerfile,omitempty"`
 
-	// repo describes the Git repository to build.
+	// git describes the Git repository to build.
 	// +required
-	Repo BuildRunRepoSpec `json:"repo"`
+	Git BuildRunGitSpec `json:"git"`
 
 	// image describes the image destination for the build output.
 	// +required
 	Image BuildRunImageSpec `json:"image"`
 }
 
-// BuildRunRepoSpec describes the Git source for a build.
-type BuildRunRepoSpec struct {
+// BuildRunGitSpec describes the Git source for a build.
+type BuildRunGitSpec struct {
 	// url is the Git repository URL.
 	// +required
 	URL string `json:"url"`
