@@ -3,6 +3,7 @@
 # It should be run by config/default
 resources:
 - bases/kudeploy.com_projects.yaml
+- bases/kudeploy.com_buildruns.yaml
 # +kubebuilder:scaffold:crdkustomizeresource
 
 patches:

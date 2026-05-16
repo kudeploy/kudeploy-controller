@@ -16,4 +16,12 @@ resources:
   kind: Project
   path: github.com/kudeploy/kudeploy-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: kudeploy.com
+  kind: BuildRun
+  path: github.com/kudeploy/kudeploy-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"

@@ -8,6 +8,7 @@ rules:
   - ""
   resources:
   - namespaces
+  - serviceaccounts
   verbs:
   - create
   - delete
@@ -17,8 +18,17 @@ rules:
   - update
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - kudeploy.com
   resources:
+  - buildruns
   - projects
   verbs:
   - create
@@ -31,14 +41,28 @@ rules:
 - apiGroups:
   - kudeploy.com
   resources:
+  - buildruns/finalizers
   - projects/finalizers
   verbs:
   - update
 - apiGroups:
   - kudeploy.com
   resources:
+  - buildruns/status
   - projects/status
   verbs:
   - get
   - patch
   - update
+- apiGroups:
+  - tekton.dev
+  resources:
+  - pipelineruns
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

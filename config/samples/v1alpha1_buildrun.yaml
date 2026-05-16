@@ -1,0 +1,16 @@
+apiVersion: kudeploy.com/v1alpha1
+kind: BuildRun
+metadata:
+  name: blog-abc123
+  namespace: blog
+spec:
+  repo:
+    url: https://github.com/xudongcc/blog
+    revision: main
+    secretRef:
+      name: repo-credentials
+  image:
+    repository: registry.kudeploy.com/blog
+    tag: abc123
+    secretRef:
+      name: image-credentials
