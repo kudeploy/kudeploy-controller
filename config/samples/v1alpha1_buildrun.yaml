@@ -1,16 +1,14 @@
 apiVersion: kudeploy.com/v1alpha1
 kind: BuildRun
 metadata:
-  name: blog-abc123
-  namespace: blog
+  name: whoami-latest
+  namespace: whoami
 spec:
   repo:
-    url: https://github.com/xudongcc/blog
+    url: https://github.com/kudeploy/whoami
     revision: main
-    secretRef:
-      name: repo-credentials
   image:
-    repository: registry.kudeploy.com/blog
-    tag: abc123
+    repository: registry.kudeploy.com/whoami/whoami
+    tag: latest
     secretRef:
       name: image-credentials

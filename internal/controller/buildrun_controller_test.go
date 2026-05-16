@@ -37,8 +37,8 @@ import (
 
 var _ = Describe("BuildRun Controller", func() {
 	const (
-		namespaceName = "blog"
-		buildRunName  = "blog-abc123"
+		namespaceName = "whoami"
+		buildRunName  = "whoami-latest"
 	)
 
 	ctx := context.Background()
@@ -72,15 +72,15 @@ var _ = Describe("BuildRun Controller", func() {
 			},
 			Spec: kudeployv1alpha1.BuildRunSpec{
 				Repo: kudeployv1alpha1.BuildRunRepoSpec{
-					URL:      "https://github.com/xudongcc/blog",
+					URL:      "https://github.com/kudeploy/whoami",
 					Revision: "main",
 					SecretRef: &corev1.LocalObjectReference{
 						Name: "repo-credentials",
 					},
 				},
 				Image: kudeployv1alpha1.BuildRunImageSpec{
-					Repository: "registry.kudeploy.com/blog",
-					Tag:        "abc123",
+					Repository: "registry.kudeploy.com/whoami/whoami",
+					Tag:        "latest",
 					SecretRef: &corev1.LocalObjectReference{
 						Name: "image-credentials",
 					},
@@ -136,9 +136,9 @@ var _ = Describe("BuildRun Controller", func() {
 		Expect(pipelineRun.Spec.TaskRunTemplate.ServiceAccountName).To(Equal("buildrun-" + buildRunName))
 		Expect(pipelineRun.Spec.TaskRunTemplate.PodTemplate.SecurityContext.FSGroup).To(Equal(ptrInt64(65532)))
 		Expect(pipelineRun.Spec.Params).To(ConsistOf(
-			tektonStringParam("git-url", "https://github.com/xudongcc/blog"),
+			tektonStringParam("git-url", "https://github.com/kudeploy/whoami"),
 			tektonStringParam("git-revision", "main"),
-			tektonStringParam("image", "registry.kudeploy.com/blog:abc123"),
+			tektonStringParam("image", "registry.kudeploy.com/whoami/whoami:latest"),
 		))
 		Expect(pipelineRun.Spec.Workspaces).To(HaveLen(1))
 		Expect(pipelineRun.Spec.Workspaces[0].Name).To(Equal("source"))
