@@ -38,6 +38,12 @@ type ServiceSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// envFrom describes sources used to populate container environment variables.
+	// The Service env Secret maintained by the controller is added automatically.
+	// +optional
+	// +listType=atomic
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 }
 
 // ServicePort describes one exposed Service port.

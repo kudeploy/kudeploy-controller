@@ -75,6 +75,13 @@ var _ = Describe("Service Controller", func() {
 				Env: []corev1.EnvVar{
 					{Name: "LOG_LEVEL", Value: "debug"},
 				},
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						ConfigMapRef: &corev1.ConfigMapEnvSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-config"},
+						},
+					},
+				},
 				Ports: []kudeployv1alpha1.ServicePort{
 					{Port: 80, TargetPort: 8080},
 				},
@@ -100,6 +107,11 @@ var _ = Describe("Service Controller", func() {
 		Expect(kudeployDeployment.Spec.ServiceAccountName).To(Equal("service-whoami"))
 		Expect(kudeployDeployment.Spec.Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
 		Expect(kudeployDeployment.Spec.Env).To(ConsistOf(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
+		Expect(kudeployDeployment.Spec.EnvFrom).To(ConsistOf(corev1.EnvFromSource{
+			ConfigMapRef: &corev1.ConfigMapEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-config"},
+			},
+		}))
 		Expect(kudeployDeployment.Spec.Ports).To(ConsistOf(kudeployv1alpha1.ServicePort{Port: 80, TargetPort: 8080}))
 
 		serviceEnvSecret := &corev1.Secret{}
@@ -327,6 +339,11 @@ var _ = Describe("Service Controller", func() {
 		Expect(reconciler.Get(ctx, types.NamespacedName{Name: "whoami-00002", Namespace: namespaceName}, newDeployment)).To(Succeed())
 		Expect(newDeployment.Spec.Version).To(Equal(int64(2)))
 		Expect(newDeployment.Spec.Env).To(ConsistOf(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
+		Expect(newDeployment.Spec.EnvFrom).To(ConsistOf(corev1.EnvFromSource{
+			ConfigMapRef: &corev1.ConfigMapEnvSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-config"},
+			},
+		}))
 
 		Expect(reconciler.Get(ctx, serviceKey, kubernetesService)).To(Succeed())
 		Expect(kubernetesService.Spec.Selector).To(Equal(map[string]string{

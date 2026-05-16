@@ -49,6 +49,12 @@ type DeploymentSpec struct {
 	// +listType=map
 	// +listMapKey=name
 	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// envFrom describes sources used to populate container environment variables captured for this Deployment version.
+	// The Service env Secret clone maintained by the controller is added automatically to the Kubernetes Deployment.
+	// +optional
+	// +listType=atomic
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 }
 
 // DeploymentStatus defines the observed state of Deployment.

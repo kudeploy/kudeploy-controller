@@ -336,6 +336,7 @@ func buildKudeployDeployment(service *kudeployv1alpha1.Service, version int64, n
 			Image:              service.Spec.Image,
 			Ports:              service.Spec.Ports,
 			Env:                service.Spec.Env,
+			EnvFrom:            service.Spec.EnvFrom,
 		},
 	}
 }

@@ -272,22 +272,27 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 							Image:           deployment.Spec.Image,
 							ImagePullPolicy: corev1.PullAlways,
 							Env:             deployment.Spec.Env,
-							EnvFrom: []corev1.EnvFromSource{
-								{
-									SecretRef: &corev1.SecretEnvSource{
-										LocalObjectReference: corev1.LocalObjectReference{
-											Name: deploymentEnvSecretNameFor(deployment.Name),
-										},
-									},
-								},
-							},
-							Ports: containerPortsFor(deployment.Spec.Ports),
+							EnvFrom:         containerEnvFromFor(deployment),
+							Ports:           containerPortsFor(deployment.Spec.Ports),
 						},
 					},
 				},
 			},
 		},
 	}
+}
+
+func containerEnvFromFor(deployment *kudeployv1alpha1.Deployment) []corev1.EnvFromSource {
+	envFrom := make([]corev1.EnvFromSource, 0, len(deployment.Spec.EnvFrom)+1)
+	envFrom = append(envFrom, deployment.Spec.EnvFrom...)
+	envFrom = append(envFrom, corev1.EnvFromSource{
+		SecretRef: &corev1.SecretEnvSource{
+			LocalObjectReference: corev1.LocalObjectReference{
+				Name: deploymentEnvSecretNameFor(deployment.Name),
+			},
+		},
+	})
+	return envFrom
 }
 
 func containerPortsFor(ports []kudeployv1alpha1.ServicePort) []corev1.ContainerPort {

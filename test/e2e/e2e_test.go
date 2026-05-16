@@ -322,6 +322,16 @@ spec: {}
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(Equal(serviceE2EProjectName))
 
+			By("creating a ConfigMap used by Service envFrom")
+			applyManifest("kudeploy-service-config", fmt.Sprintf(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: whoami-config
+  namespace: %s
+data:
+  APP_MODE: e2e
+`, serviceE2EProjectName))
+
 			By("creating a Kudeploy Service")
 			applyManifest("kudeploy-service", serviceManifest(serviceE2EFirstImage))
 
@@ -339,6 +349,7 @@ spec: {}
 			expectKubernetesServiceSelector("whoami-00001")
 			expectDeploymentImageAndPolicy("whoami-00001", serviceE2EFirstImage)
 			expectDeploymentEnv("whoami-00001", "LOG_LEVEL", "e2e")
+			expectDeploymentEnvFromConfigMap("whoami-00001", "whoami-config")
 			expectDeploymentEnvSecret("whoami-00001", "whoami-00001-env")
 			expectHTTPResponseFromService("whoami-first", "Hostname:")
 
@@ -357,6 +368,7 @@ spec: {}
 				2*time.Minute,
 			)
 			expectKubernetesServiceSelector("whoami-00002")
+			expectDeploymentEnvFromConfigMap("whoami-00002", "whoami-config")
 			expectDeploymentEnvSecret("whoami-00002", "whoami-00002-env")
 			expectSecretData(serviceE2EProjectName, "whoami-00002-env", "API_TOKEN", "one")
 
@@ -380,6 +392,7 @@ spec: {}
 			expectKubernetesServiceSelector("whoami-00003")
 			expectDeploymentImageAndPolicy("whoami-00003", serviceE2ESecondImage)
 			expectDeploymentEnv("whoami-00003", "LOG_LEVEL", "e2e")
+			expectDeploymentEnvFromConfigMap("whoami-00003", "whoami-config")
 			expectDeploymentEnvSecret("whoami-00003", "whoami-00003-env")
 			expectSecretData(serviceE2EProjectName, "whoami-00003-env", "API_TOKEN", "one")
 			expectHTTPResponseFromService("whoami-second", "Hostname:")
@@ -529,6 +542,9 @@ spec:
   env:
     - name: LOG_LEVEL
       value: e2e
+  envFrom:
+    - configMapRef:
+        name: whoami-config
   ports:
     - port: 80
       targetPort: 80
@@ -603,10 +619,20 @@ func expectDeploymentEnv(deploymentName, envName, expectedValue string) {
 	Expect(output).To(Equal(expectedValue))
 }
 
+func expectDeploymentEnvFromConfigMap(deploymentName, configMapName string) {
+	cmd := exec.Command("kubectl", "get", "deployment", deploymentName,
+		"-n", serviceE2EProjectName,
+		"-o", fmt.Sprintf("jsonpath={.spec.template.spec.containers[0].envFrom[?(@.configMapRef.name=='%s')].configMapRef.name}", configMapName),
+	)
+	output, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(output).To(Equal(configMapName))
+}
+
 func expectDeploymentEnvSecret(deploymentName, secretName string) {
 	cmd := exec.Command("kubectl", "get", "deployment", deploymentName,
 		"-n", serviceE2EProjectName,
-		"-o", "jsonpath={.spec.template.spec.containers[0].envFrom[0].secretRef.name}",
+		"-o", fmt.Sprintf("jsonpath={.spec.template.spec.containers[0].envFrom[?(@.secretRef.name=='%s')].secretRef.name}", secretName),
 	)
 	output, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred())

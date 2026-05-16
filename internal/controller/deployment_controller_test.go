@@ -92,6 +92,13 @@ var _ = Describe("Deployment Controller", func() {
 				Env: []corev1.EnvVar{
 					{Name: "LOG_LEVEL", Value: "debug"},
 				},
+				EnvFrom: []corev1.EnvFromSource{
+					{
+						ConfigMapRef: &corev1.ConfigMapEnvSource{
+							LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-config"},
+						},
+					},
+				},
 				Ports: []kudeployv1alpha1.ServicePort{
 					{Port: 80, TargetPort: 8080},
 				},
@@ -130,11 +137,18 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Env).To(ConsistOf(corev1.EnvVar{Name: "LOG_LEVEL", Value: "debug"}))
-		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].EnvFrom).To(ConsistOf(corev1.EnvFromSource{
-			SecretRef: &corev1.SecretEnvSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-00001-env"},
+		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].EnvFrom).To(ConsistOf(
+			corev1.EnvFromSource{
+				ConfigMapRef: &corev1.ConfigMapEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-config"},
+				},
 			},
-		}))
+			corev1.EnvFromSource{
+				SecretRef: &corev1.SecretEnvSource{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "whoami-00001-env"},
+				},
+			},
+		))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Ports).To(ConsistOf(corev1.ContainerPort{ContainerPort: 8080}))
 		Expect(kubernetesDeployment.OwnerReferences).To(HaveLen(1))
 		Expect(kubernetesDeployment.OwnerReferences[0].Name).To(Equal(deploymentName))
