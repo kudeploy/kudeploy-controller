@@ -281,6 +281,7 @@ func buildKubernetesDeployment(kudeployDeployment *kudeployv1alpha1.Deployment) 
 							StartupProbe:    kudeployDeployment.Spec.StartupProbe,
 						},
 					},
+					ImagePullSecrets: imagePullSecretsFor(kudeployDeployment.Spec.ImageSecretRef),
 				},
 			},
 		},
@@ -315,6 +316,13 @@ func containerPortsFor(ports []kudeployv1alpha1.ServicePort) []corev1.ContainerP
 		})
 	}
 	return containerPorts
+}
+
+func imagePullSecretsFor(secretRef *corev1.LocalObjectReference) []corev1.LocalObjectReference {
+	if secretRef == nil || secretRef.Name == "" {
+		return nil
+	}
+	return []corev1.LocalObjectReference{{Name: secretRef.Name}}
 }
 
 func targetPortFor(port kudeployv1alpha1.ServicePort) int32 {

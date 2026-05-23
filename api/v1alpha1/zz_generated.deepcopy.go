@@ -239,6 +239,11 @@ func (in *DeploymentSpec) DeepCopyInto(out *DeploymentSpec) {
 		*out = new(int32)
 		**out = **in
 	}
+	if in.ImageSecretRef != nil {
+		in, out := &in.ImageSecretRef, &out.ImageSecretRef
+		*out = new(v1.LocalObjectReference)
+		**out = **in
+	}
 	if in.Command != nil {
 		in, out := &in.Command, &out.Command
 		*out = make([]string, len(*in))
@@ -494,6 +499,11 @@ func (in *ServiceSpec) DeepCopyInto(out *ServiceSpec) {
 	if in.Replicas != nil {
 		in, out := &in.Replicas, &out.Replicas
 		*out = new(int32)
+		**out = **in
+	}
+	if in.ImageSecretRef != nil {
+		in, out := &in.ImageSecretRef, &out.ImageSecretRef
+		*out = new(v1.LocalObjectReference)
 		**out = **in
 	}
 	if in.Command != nil {

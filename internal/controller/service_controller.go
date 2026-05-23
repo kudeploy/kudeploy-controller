@@ -329,6 +329,7 @@ func buildKudeployDeployment(kudeployService *kudeployv1alpha1.Service, version 
 			ServiceAccountName: runtimeServiceAccountNameFor(kudeployService.Name),
 			Replicas:           kudeployService.Spec.Replicas,
 			Image:              kudeployService.Spec.Image,
+			ImageSecretRef:     kudeployService.Spec.ImageSecretRef,
 			Command:            kudeployService.Spec.Command,
 			Args:               kudeployService.Spec.Args,
 			Resources:          kudeployService.Spec.Resources,

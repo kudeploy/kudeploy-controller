@@ -92,6 +92,7 @@ var _ = Describe("Deployment Controller", func() {
 				ServiceAccountName: "service-whoami",
 				Replicas:           ptrInt32(0),
 				Image:              "ghcr.io/kudeploy/whoami:latest",
+				ImageSecretRef:     &corev1.LocalObjectReference{Name: "registry-credentials"},
 				Command:            []string{"/whoami"},
 				Args:               []string{"--port=8080"},
 				Resources: corev1.ResourceRequirements{
@@ -175,6 +176,7 @@ var _ = Describe("Deployment Controller", func() {
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Name).To(Equal(serviceName))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(kubernetesDeployment.Spec.Template.Spec.ImagePullSecrets).To(ConsistOf(corev1.LocalObjectReference{Name: "registry-credentials"}))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Command).To(Equal([]string{"/whoami"}))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Args).To(Equal([]string{"--port=8080"}))
 		Expect(kubernetesDeployment.Spec.Template.Spec.Containers[0].Resources.Requests.Cpu().String()).To(Equal("50m"))

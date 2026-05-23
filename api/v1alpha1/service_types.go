@@ -33,6 +33,10 @@ type ServiceSpec struct {
 	// +required
 	Image string `json:"image"`
 
+	// imageSecretRef references an optional Secret in the same namespace used for pulling the image.
+	// +optional
+	ImageSecretRef *corev1.LocalObjectReference `json:"imageSecretRef,omitempty"`
+
 	// command overrides the container entrypoint.
 	// +optional
 	// +listType=atomic

@@ -75,8 +75,11 @@ var _ = Describe("Service Controller", func() {
 			Spec: kudeployv1alpha1.ServiceSpec{
 				Replicas: ptrInt32(2),
 				Image:    "ghcr.io/kudeploy/whoami:latest",
-				Command:  []string{"/whoami"},
-				Args:     []string{"--port=8080"},
+				ImageSecretRef: &corev1.LocalObjectReference{
+					Name: "registry-credentials",
+				},
+				Command: []string{"/whoami"},
+				Args:    []string{"--port=8080"},
 				Resources: corev1.ResourceRequirements{
 					Requests: corev1.ResourceList{
 						corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -146,6 +149,7 @@ var _ = Describe("Service Controller", func() {
 		Expect(kudeployDeployment.Spec.ServiceAccountName).To(Equal("service-whoami"))
 		Expect(kudeployDeployment.Spec.Replicas).To(Equal(ptrInt32(2)))
 		Expect(kudeployDeployment.Spec.Image).To(Equal("ghcr.io/kudeploy/whoami:latest"))
+		Expect(kudeployDeployment.Spec.ImageSecretRef).To(Equal(&corev1.LocalObjectReference{Name: "registry-credentials"}))
 		Expect(kudeployDeployment.Spec.Command).To(Equal([]string{"/whoami"}))
 		Expect(kudeployDeployment.Spec.Args).To(Equal([]string{"--port=8080"}))
 		Expect(kudeployDeployment.Spec.Resources.Requests.Cpu().String()).To(Equal("50m"))
