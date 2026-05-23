@@ -38,10 +38,12 @@ var _ = Describe("Project Controller", func() {
 
 		var projectName string
 		var projectKey types.NamespacedName
+		var sourceNamespace string
 
 		BeforeEach(func() {
 			projectName = "project-" + rand.String(8)
 			projectKey = types.NamespacedName{Name: projectName}
+			sourceNamespace = "controller-" + rand.String(8)
 		})
 
 		AfterEach(func() {
@@ -55,6 +57,14 @@ var _ = Describe("Project Controller", func() {
 
 			namespace := &corev1.Namespace{}
 			err = k8sClient.Get(ctx, types.NamespacedName{Name: projectName}, namespace)
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
+			} else {
+				Expect(errors.IsNotFound(err)).To(BeTrue())
+			}
+
+			namespace = &corev1.Namespace{}
+			err = k8sClient.Get(ctx, types.NamespacedName{Name: sourceNamespace}, namespace)
 			if err == nil {
 				Expect(k8sClient.Delete(ctx, namespace)).To(Succeed())
 			} else {
@@ -125,6 +135,192 @@ var _ = Describe("Project Controller", func() {
 				HaveField("Type", "Ready"),
 				HaveField("Status", metav1.ConditionFalse),
 				HaveField("Reason", "NamespaceConflict"),
+			)))
+		})
+
+		It("syncs the configured BuildRun docker Secret into the managed namespace", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: sourceNamespace},
+			})).To(Succeed())
+			sourceSecret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-credentials",
+					Namespace: sourceNamespace,
+					Labels: map[string]string{
+						"registry": "ghcr",
+					},
+					Annotations: map[string]string{
+						"kudeploy.com/source": "controller",
+					},
+				},
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{"ghcr.io":{}}}`),
+				},
+			}
+			Expect(k8sClient.Create(ctx, sourceSecret)).To(Succeed())
+
+			project := &kudeployv1alpha1.Project{
+				ObjectMeta: metav1.ObjectMeta{Name: projectName},
+			}
+			Expect(k8sClient.Create(ctx, project)).To(Succeed())
+
+			controllerReconciler := &ProjectReconciler{
+				Client:                        k8sClient,
+				Scheme:                        k8sClient.Scheme(),
+				BuildRunDockerSecretName:      "image-credentials",
+				BuildRunDockerSecretNamespace: sourceNamespace,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: projectKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			syncedSecret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "image-credentials", Namespace: projectName}, syncedSecret)).To(Succeed())
+			Expect(syncedSecret.Type).To(Equal(corev1.SecretTypeDockerConfigJson))
+			Expect(syncedSecret.Data).To(Equal(sourceSecret.Data))
+			Expect(syncedSecret.Labels).To(HaveKeyWithValue("registry", "ghcr"))
+			Expect(syncedSecret.Labels).To(HaveKeyWithValue("kudeploy.com/project", projectName))
+			Expect(syncedSecret.Labels).To(HaveKeyWithValue("app.kubernetes.io/managed-by", "kudeploy"))
+			Expect(syncedSecret.Annotations).To(HaveKeyWithValue("kudeploy.com/source", "controller"))
+			Expect(syncedSecret.OwnerReferences).To(HaveLen(1))
+			Expect(syncedSecret.OwnerReferences[0].Name).To(Equal(projectName))
+
+			Expect(k8sClient.Get(ctx, projectKey, project)).To(Succeed())
+			Expect(project.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", "Ready"),
+				HaveField("Status", metav1.ConditionTrue),
+				HaveField("Reason", "NamespaceReady"),
+			)))
+		})
+
+		It("updates an existing synced BuildRun docker Secret", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: sourceNamespace},
+			})).To(Succeed())
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-credentials",
+					Namespace: sourceNamespace,
+				},
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{"new.example.com":{}}}`),
+				},
+			})).To(Succeed())
+
+			namespace := &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: projectName,
+					Labels: map[string]string{
+						"kudeploy.com/project":         projectName,
+						"app.kubernetes.io/managed-by": "kudeploy",
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, namespace)).To(Succeed())
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-credentials",
+					Namespace: projectName,
+				},
+				Type: corev1.SecretTypeDockerConfigJson,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{"old.example.com":{}}}`),
+				},
+			})).To(Succeed())
+
+			project := &kudeployv1alpha1.Project{
+				ObjectMeta: metav1.ObjectMeta{Name: projectName},
+			}
+			Expect(k8sClient.Create(ctx, project)).To(Succeed())
+
+			controllerReconciler := &ProjectReconciler{
+				Client:                        k8sClient,
+				Scheme:                        k8sClient.Scheme(),
+				BuildRunDockerSecretName:      "image-credentials",
+				BuildRunDockerSecretNamespace: sourceNamespace,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: projectKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			syncedSecret := &corev1.Secret{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{Name: "image-credentials", Namespace: projectName}, syncedSecret)).To(Succeed())
+			Expect(syncedSecret.Data).To(Equal(map[string][]byte{
+				corev1.DockerConfigJsonKey: []byte(`{"auths":{"new.example.com":{}}}`),
+			}))
+			Expect(syncedSecret.OwnerReferences).To(HaveLen(1))
+			Expect(syncedSecret.OwnerReferences[0].Name).To(Equal(projectName))
+		})
+
+		It("marks the Project not ready when the configured BuildRun docker Secret is missing", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: sourceNamespace},
+			})).To(Succeed())
+			project := &kudeployv1alpha1.Project{
+				ObjectMeta: metav1.ObjectMeta{Name: projectName},
+			}
+			Expect(k8sClient.Create(ctx, project)).To(Succeed())
+
+			controllerReconciler := &ProjectReconciler{
+				Client:                        k8sClient,
+				Scheme:                        k8sClient.Scheme(),
+				BuildRunDockerSecretName:      "image-credentials",
+				BuildRunDockerSecretNamespace: sourceNamespace,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: projectKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			syncedSecret := &corev1.Secret{}
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: "image-credentials", Namespace: projectName}, syncedSecret))).To(BeTrue())
+			Expect(k8sClient.Get(ctx, projectKey, project)).To(Succeed())
+			Expect(project.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", "Ready"),
+				HaveField("Status", metav1.ConditionFalse),
+				HaveField("Reason", "BuildRunDockerSecretNotFound"),
+			)))
+		})
+
+		It("marks the Project not ready when the configured BuildRun docker Secret has the wrong type", func() {
+			Expect(k8sClient.Create(ctx, &corev1.Namespace{
+				ObjectMeta: metav1.ObjectMeta{Name: sourceNamespace},
+			})).To(Succeed())
+			Expect(k8sClient.Create(ctx, &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "image-credentials",
+					Namespace: sourceNamespace,
+				},
+				Type: corev1.SecretTypeOpaque,
+				Data: map[string][]byte{
+					corev1.DockerConfigJsonKey: []byte(`{"auths":{"ghcr.io":{}}}`),
+				},
+			})).To(Succeed())
+
+			project := &kudeployv1alpha1.Project{
+				ObjectMeta: metav1.ObjectMeta{Name: projectName},
+			}
+			Expect(k8sClient.Create(ctx, project)).To(Succeed())
+
+			controllerReconciler := &ProjectReconciler{
+				Client:                        k8sClient,
+				Scheme:                        k8sClient.Scheme(),
+				BuildRunDockerSecretName:      "image-credentials",
+				BuildRunDockerSecretNamespace: sourceNamespace,
+			}
+
+			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{NamespacedName: projectKey})
+			Expect(err).NotTo(HaveOccurred())
+
+			syncedSecret := &corev1.Secret{}
+			Expect(errors.IsNotFound(k8sClient.Get(ctx, types.NamespacedName{Name: "image-credentials", Namespace: projectName}, syncedSecret))).To(BeTrue())
+			Expect(k8sClient.Get(ctx, projectKey, project)).To(Succeed())
+			Expect(project.Status.Conditions).To(ContainElement(SatisfyAll(
+				HaveField("Type", "Ready"),
+				HaveField("Status", metav1.ConditionFalse),
+				HaveField("Reason", "BuildRunDockerSecretInvalidType"),
+				HaveField("Message", ContainSubstring(`expected "kubernetes.io/dockerconfigjson"`)),
 			)))
 		})
 	})

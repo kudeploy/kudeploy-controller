@@ -38,6 +38,42 @@ make deploy IMG=<some-registry>/kudeploy-controller:tag
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
 privileges or be logged in as admin.
 
+### BuildRun Docker Secret Sync
+
+The Project controller can copy one docker registry Secret into every managed
+Project namespace. The source Secret must have type
+`kubernetes.io/dockerconfigjson`. Create it in the controller namespace:
+
+```sh
+kubectl create secret docker-registry image-credentials \
+  --namespace kudeploy-controller-system \
+  --docker-server=<registry> \
+  --docker-username=<username> \
+  --docker-password=<password>
+```
+
+Enable sync by adding this manager argument:
+
+```yaml
+- --buildrun-docker-secret-name=image-credentials
+```
+
+The source namespace defaults to the manager Pod namespace. To read the Secret
+from another namespace, also set:
+
+```yaml
+- --buildrun-docker-secret-namespace=<namespace>
+```
+
+BuildRuns can then use the synced Secret from their Project namespace:
+
+```yaml
+spec:
+  image:
+    secretRef:
+      name: image-credentials
+```
+
 **Create instances of your solution**
 You can apply the samples (examples) from the config/sample:
 
@@ -132,4 +168,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-

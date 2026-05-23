@@ -64,6 +64,8 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var buildRunDockerSecretName string
+	var buildRunDockerSecretNamespace string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -82,6 +84,10 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.StringVar(&buildRunDockerSecretName, "buildrun-docker-secret-name", "",
+		"The docker registry Secret name to copy into every managed Project namespace. Empty disables sync.")
+	flag.StringVar(&buildRunDockerSecretNamespace, "buildrun-docker-secret-namespace", "",
+		"The namespace containing the docker registry Secret to copy. Defaults to POD_NAMESPACE when the Secret name is set.")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -89,6 +95,14 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if buildRunDockerSecretName != "" && buildRunDockerSecretNamespace == "" {
+		buildRunDockerSecretNamespace = os.Getenv("POD_NAMESPACE")
+	}
+	if buildRunDockerSecretName != "" && buildRunDockerSecretNamespace == "" {
+		setupLog.Info("BuildRun docker Secret namespace is required when docker Secret sync is enabled")
+		os.Exit(1)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -182,8 +196,10 @@ func main() {
 	}
 
 	if err := (&controller.ProjectReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:                        mgr.GetClient(),
+		Scheme:                        mgr.GetScheme(),
+		BuildRunDockerSecretName:      buildRunDockerSecretName,
+		BuildRunDockerSecretNamespace: buildRunDockerSecretNamespace,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "project")
 		os.Exit(1)

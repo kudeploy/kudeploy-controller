@@ -63,8 +63,16 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          # Enable BuildRun docker Secret sync with:
+          # - --buildrun-docker-secret-name=<secret-name>
+          # The source namespace defaults to this Pod namespace.
         image: controller:latest
         name: manager
+        env:
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         ports:
         - containerPort: 8081
           name: health
