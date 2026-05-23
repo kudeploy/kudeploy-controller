@@ -180,7 +180,7 @@ var _ = Describe("BuildRun Controller", func() {
 			buildRun,
 			newSecret("git-credentials"),
 			newSecret("image-credentials"),
-			buildServiceAccount(buildRun),
+			buildRunServiceAccount(buildRun),
 			pipelineRun,
 		)
 
@@ -211,7 +211,7 @@ var _ = Describe("BuildRun Controller", func() {
 			buildRun,
 			newSecret("git-credentials"),
 			newSecret("image-credentials"),
-			buildServiceAccount(buildRun),
+			buildRunServiceAccount(buildRun),
 			pipelineRun,
 		)
 
@@ -254,7 +254,7 @@ var _ = Describe("BuildRun Controller", func() {
 		buildRun.Finalizers = []string{buildRunFinalizer}
 		buildRun.DeletionTimestamp = &now
 
-		serviceAccount := buildServiceAccount(buildRun)
+		serviceAccount := buildRunServiceAccount(buildRun)
 		pipelineRun := buildPipelineRun(buildRun)
 		reconciler := newReconciler(buildRun, serviceAccount, pipelineRun)
 
@@ -266,10 +266,10 @@ var _ = Describe("BuildRun Controller", func() {
 	})
 
 	It("keeps generated ServiceAccount names deterministic and within the Kubernetes name limit", func() {
-		Expect(serviceAccountNameFor("whoami")).To(Equal("buildrun-whoami"))
+		Expect(buildRunServiceAccountNameFor("whoami")).To(Equal("buildrun-whoami"))
 
 		longName := "this-is-a-very-long-buildrun-name-that-still-needs-serviceaccount"
-		generatedName := serviceAccountNameFor(longName)
+		generatedName := buildRunServiceAccountNameFor(longName)
 		Expect(len(generatedName)).To(BeNumerically("<=", 63))
 		Expect(generatedName).To(HavePrefix("buildrun-"))
 		Expect(generatedName).NotTo(Equal("buildrun-" + longName))

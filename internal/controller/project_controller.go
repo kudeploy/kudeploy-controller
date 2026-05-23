@@ -161,10 +161,10 @@ func (r *ProjectReconciler) reconcileDelete(ctx context.Context, project *kudepl
 }
 
 func (r *ProjectReconciler) updateProjectStatus(ctx context.Context, project *kudeployv1alpha1.Project, condition metav1.Condition) error {
-	original := project.DeepCopy()
+	originalProject := project.DeepCopy()
 	project.Status.NamespaceName = project.Name
 	meta.SetStatusCondition(&project.Status.Conditions, condition)
-	return ignoreConflict(r.Status().Patch(ctx, project, client.MergeFrom(original)))
+	return ignoreConflict(r.Status().Patch(ctx, project, client.MergeFrom(originalProject)))
 }
 
 func isManagedNamespace(namespace *corev1.Namespace, projectName string) bool {

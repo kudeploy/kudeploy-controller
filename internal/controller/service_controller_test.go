@@ -241,7 +241,7 @@ var _ = Describe("Service Controller", func() {
 				},
 			},
 		}
-		kubernetesService := stableKubernetesService(service, nil)
+		kubernetesService := buildKubernetesService(service, nil)
 		reconciler := newReconciler(service, kudeployDeployment, kubernetesService)
 
 		_, err := reconciler.Reconcile(ctx, reconcile.Request{NamespacedName: serviceKey})
@@ -298,12 +298,12 @@ var _ = Describe("Service Controller", func() {
 			},
 		}
 
-		kubernetesService := stableKubernetesService(service, nil)
+		kubernetesService := buildKubernetesService(service, nil)
 		kubernetesService.Labels["team"] = externalTeam
 		kubernetesService.Annotations = map[string]string{
 			"external.example.com/note": "keep",
 		}
-		serviceAccount := runtimeServiceAccount(service)
+		serviceAccount := buildRuntimeServiceAccount(service)
 		serviceAccount.Labels["team"] = externalTeam
 		serviceAccount.Annotations = map[string]string{
 			"external.example.com/note": "keep",
@@ -335,7 +335,7 @@ var _ = Describe("Service Controller", func() {
 		service.Status.ActiveDeploymentName = firstDeploymentName
 		service.Spec.Image = "ghcr.io/kudeploy/whoami:v2"
 
-		kubernetesService := stableKubernetesService(service, map[string]string{
+		kubernetesService := buildKubernetesService(service, map[string]string{
 			deploymentLabel: firstDeploymentName,
 		})
 		reconciler := newReconciler(service, kubernetesService)
@@ -374,9 +374,9 @@ var _ = Describe("Service Controller", func() {
 		service.Status.ActiveVersion = 1
 		service.Status.ActiveDeploymentName = firstDeploymentName
 
-		serviceEnvSecret := serviceEnvSecret(service)
+		serviceEnvSecret := buildServiceEnvSecret(service)
 		serviceEnvSecret.Data = map[string][]byte{"TOKEN": []byte("new")}
-		kubernetesService := stableKubernetesService(service, map[string]string{
+		kubernetesService := buildKubernetesService(service, map[string]string{
 			deploymentLabel: firstDeploymentName,
 		})
 		reconciler := newReconciler(service, serviceEnvSecret, kubernetesService)

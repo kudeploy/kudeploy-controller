@@ -108,11 +108,11 @@ func (r *BuildRunReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		})
 	}
 
-	serviceAccount := buildServiceAccount(buildRun)
+	serviceAccount := buildRunServiceAccount(buildRun)
 	if err := controllerutil.SetControllerReference(buildRun, serviceAccount, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.createOrUpdateServiceAccount(ctx, serviceAccount); err != nil {
+	if err := r.createOrUpdateBuildRunServiceAccount(ctx, serviceAccount); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -139,7 +139,7 @@ func (r *BuildRunReconciler) reconcileDelete(ctx context.Context, buildRun *kude
 	if err := r.deleteIfExists(ctx, &tektonv1.PipelineRun{ObjectMeta: metav1.ObjectMeta{Name: buildRun.Name, Namespace: buildRun.Namespace}}); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.deleteIfExists(ctx, &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: serviceAccountNameFor(buildRun.Name), Namespace: buildRun.Namespace}}); err != nil {
+	if err := r.deleteIfExists(ctx, &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{Name: buildRunServiceAccountNameFor(buildRun.Name), Namespace: buildRun.Namespace}}); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -152,8 +152,8 @@ func (r *BuildRunReconciler) missingSecret(ctx context.Context, buildRun *kudepl
 		if secretRef == nil || secretRef.Name == "" {
 			continue
 		}
-		secret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: buildRun.Namespace}, secret)
+		referencedSecret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: buildRun.Namespace}, referencedSecret)
 		if apierrors.IsNotFound(err) {
 			return secretRef.Name, nil
 		}
@@ -164,27 +164,27 @@ func (r *BuildRunReconciler) missingSecret(ctx context.Context, buildRun *kudepl
 	return "", nil
 }
 
-func (r *BuildRunReconciler) createOrUpdateServiceAccount(ctx context.Context, desired *corev1.ServiceAccount) error {
-	current := &corev1.ServiceAccount{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+func (r *BuildRunReconciler) createOrUpdateBuildRunServiceAccount(ctx context.Context, serviceAccount *corev1.ServiceAccount) error {
+	existingServiceAccount := &corev1.ServiceAccount{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(serviceAccount), existingServiceAccount)
 	if apierrors.IsNotFound(err) {
-		return r.Create(ctx, desired)
+		return r.Create(ctx, serviceAccount)
 	}
 	if err != nil {
 		return err
 	}
-	current.Labels = desired.Labels
-	current.OwnerReferences = desired.OwnerReferences
-	current.Secrets = desired.Secrets
-	current.ImagePullSecrets = desired.ImagePullSecrets
-	return r.Update(ctx, current)
+	existingServiceAccount.Labels = serviceAccount.Labels
+	existingServiceAccount.OwnerReferences = serviceAccount.OwnerReferences
+	existingServiceAccount.Secrets = serviceAccount.Secrets
+	existingServiceAccount.ImagePullSecrets = serviceAccount.ImagePullSecrets
+	return r.Update(ctx, existingServiceAccount)
 }
 
-func (r *BuildRunReconciler) createPipelineRun(ctx context.Context, desired *tektonv1.PipelineRun) error {
-	current := &tektonv1.PipelineRun{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+func (r *BuildRunReconciler) createPipelineRun(ctx context.Context, pipelineRun *tektonv1.PipelineRun) error {
+	existingPipelineRun := &tektonv1.PipelineRun{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(pipelineRun), existingPipelineRun)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) {
+		if err := r.Create(ctx, pipelineRun); err != nil && !apierrors.IsAlreadyExists(err) {
 			return err
 		}
 		return nil
@@ -201,21 +201,21 @@ func (r *BuildRunReconciler) deleteIfExists(ctx context.Context, object client.O
 }
 
 func (r *BuildRunReconciler) updateBuildRunStatus(ctx context.Context, buildRun *kudeployv1alpha1.BuildRun, condition metav1.Condition) error {
-	original := buildRun.DeepCopy()
+	originalBuildRun := buildRun.DeepCopy()
 	buildRun.Status.PipelineRunName = buildRun.Name
-	buildRun.Status.ServiceAccountName = serviceAccountNameFor(buildRun.Name)
+	buildRun.Status.ServiceAccountName = buildRunServiceAccountNameFor(buildRun.Name)
 	meta.SetStatusCondition(&buildRun.Status.Conditions, condition)
-	return ignoreConflict(r.Status().Patch(ctx, buildRun, client.MergeFrom(original)))
+	return ignoreConflict(r.Status().Patch(ctx, buildRun, client.MergeFrom(originalBuildRun)))
 }
 
 func (r *BuildRunReconciler) updateBuildRunStatusFromPipelineRun(ctx context.Context, buildRun *kudeployv1alpha1.BuildRun, pipelineRun *tektonv1.PipelineRun) error {
-	original := buildRun.DeepCopy()
+	originalBuildRun := buildRun.DeepCopy()
 	buildRun.Status.PipelineRunName = pipelineRun.Name
-	buildRun.Status.ServiceAccountName = serviceAccountNameFor(buildRun.Name)
+	buildRun.Status.ServiceAccountName = buildRunServiceAccountNameFor(buildRun.Name)
 	buildRun.Status.StartTime = pipelineRun.Status.StartTime
 	buildRun.Status.CompletionTime = pipelineRun.Status.CompletionTime
 	meta.SetStatusCondition(&buildRun.Status.Conditions, buildRunConditionFromPipelineRun(pipelineRun))
-	return ignoreConflict(r.Status().Patch(ctx, buildRun, client.MergeFrom(original)))
+	return ignoreConflict(r.Status().Patch(ctx, buildRun, client.MergeFrom(originalBuildRun)))
 }
 
 func buildRunConditionFromPipelineRun(pipelineRun *tektonv1.PipelineRun) metav1.Condition {
@@ -279,7 +279,7 @@ func ensureBuildRunMetadata(buildRun *kudeployv1alpha1.BuildRun) bool {
 	return changed
 }
 
-func buildServiceAccount(buildRun *kudeployv1alpha1.BuildRun) *corev1.ServiceAccount {
+func buildRunServiceAccount(buildRun *kudeployv1alpha1.BuildRun) *corev1.ServiceAccount {
 	secrets := make([]corev1.ObjectReference, 0, 2)
 	imagePullSecrets := make([]corev1.LocalObjectReference, 0, 1)
 	if buildRun.Spec.Git.SecretRef != nil && buildRun.Spec.Git.SecretRef.Name != "" {
@@ -292,7 +292,7 @@ func buildServiceAccount(buildRun *kudeployv1alpha1.BuildRun) *corev1.ServiceAcc
 
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccountNameFor(buildRun.Name),
+			Name:      buildRunServiceAccountNameFor(buildRun.Name),
 			Namespace: buildRun.Namespace,
 			Labels:    buildRunManagedLabels(buildRun),
 		},
@@ -318,7 +318,7 @@ func buildPipelineRun(buildRun *kudeployv1alpha1.BuildRun) *tektonv1.PipelineRun
 				},
 			},
 			TaskRunTemplate: tektonv1.PipelineTaskRunTemplate{
-				ServiceAccountName: serviceAccountNameFor(buildRun.Name),
+				ServiceAccountName: buildRunServiceAccountNameFor(buildRun.Name),
 				PodTemplate: &tektonpod.PodTemplate{
 					SecurityContext: &corev1.PodSecurityContext{
 						FSGroup: ptrInt64(buildRunPodFSGroup),
@@ -366,7 +366,7 @@ func buildPipelineRunParams(buildRun *kudeployv1alpha1.BuildRun) tektonv1.Params
 	return params
 }
 
-func serviceAccountNameFor(buildRunName string) string {
+func buildRunServiceAccountNameFor(buildRunName string) string {
 	return childName(buildRunSAPrefix+buildRunName, "")
 }
 

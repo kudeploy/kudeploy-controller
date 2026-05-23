@@ -51,47 +51,47 @@ type DeploymentReconciler struct {
 
 // Reconcile moves a Kudeploy Deployment toward one matching Kubernetes Deployment.
 func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	deployment := &kudeployv1alpha1.Deployment{}
-	if err := r.Get(ctx, req.NamespacedName, deployment); err != nil {
+	kudeployDeployment := &kudeployv1alpha1.Deployment{}
+	if err := r.Get(ctx, req.NamespacedName, kudeployDeployment); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	if !deployment.DeletionTimestamp.IsZero() {
+	if !kudeployDeployment.DeletionTimestamp.IsZero() {
 		return ctrl.Result{}, nil
 	}
-	if terminating, err := r.namespaceIsTerminating(ctx, deployment.Namespace); err != nil || terminating {
+	if terminating, err := r.namespaceIsTerminating(ctx, kudeployDeployment.Namespace); err != nil || terminating {
 		return ctrl.Result{}, err
 	}
 
-	if ensureDeploymentMetadata(deployment) {
-		if err := r.Update(ctx, deployment); err != nil {
+	if ensureDeploymentMetadata(kudeployDeployment) {
+		if err := r.Update(ctx, kudeployDeployment); err != nil {
 			if apierrors.IsConflict(err) {
 				return ctrl.Result{Requeue: true}, nil
 			}
 			return ctrl.Result{}, err
 		}
-		if err := r.Get(ctx, req.NamespacedName, deployment); err != nil {
+		if err := r.Get(ctx, req.NamespacedName, kudeployDeployment); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
 
-	if err := r.createOrUpdateDeploymentEnvSecret(ctx, deployment); err != nil {
+	if err := r.createOrUpdateDeploymentEnvSecret(ctx, kudeployDeployment); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	kubernetesDeployment := buildKubernetesDeployment(deployment)
-	if err := controllerutil.SetControllerReference(deployment, kubernetesDeployment, r.Scheme); err != nil {
+	kubernetesDeployment := buildKubernetesDeployment(kudeployDeployment)
+	if err := controllerutil.SetControllerReference(kudeployDeployment, kubernetesDeployment, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.createOrUpdateKubernetesDeployment(ctx, kubernetesDeployment); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	current := &appsv1.Deployment{}
-	if err := r.Get(ctx, client.ObjectKeyFromObject(kubernetesDeployment), current); err != nil {
+	existingKubernetesDeployment := &appsv1.Deployment{}
+	if err := r.Get(ctx, client.ObjectKeyFromObject(kubernetesDeployment), existingKubernetesDeployment); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
@@ -100,14 +100,14 @@ func (r *DeploymentReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 		return ctrl.Result{}, err
 	}
-	return ctrl.Result{}, r.updateDeploymentStatus(ctx, deployment, current)
+	return ctrl.Result{}, r.updateDeploymentStatus(ctx, kudeployDeployment, existingKubernetesDeployment)
 }
 
-func (r *DeploymentReconciler) createOrUpdateKubernetesDeployment(ctx context.Context, desired *appsv1.Deployment) error {
-	current := &appsv1.Deployment{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+func (r *DeploymentReconciler) createOrUpdateKubernetesDeployment(ctx context.Context, kubernetesDeployment *appsv1.Deployment) error {
+	existingKubernetesDeployment := &appsv1.Deployment{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(kubernetesDeployment), existingKubernetesDeployment)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, kubernetesDeployment); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return err
 		}
 		return nil
@@ -118,46 +118,46 @@ func (r *DeploymentReconciler) createOrUpdateKubernetesDeployment(ctx context.Co
 		}
 		return err
 	}
-	original := current.DeepCopy()
+	originalKubernetesDeployment := existingKubernetesDeployment.DeepCopy()
 
-	desired.Spec.Selector = current.Spec.Selector
-	desired.Labels = mergeManagedLabels(desired.Labels, current.Labels)
-	desired.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
-	desired.Spec.Template.Labels = mergeManagedLabels(desired.Spec.Template.Labels, current.Spec.Template.Labels)
-	desired.Spec.Template.Annotations = mergeMetadata(desired.Spec.Template.Annotations, current.Spec.Template.Annotations)
+	kubernetesDeployment.Spec.Selector = existingKubernetesDeployment.Spec.Selector
+	kubernetesDeployment.Labels = mergeManagedLabels(kubernetesDeployment.Labels, existingKubernetesDeployment.Labels)
+	kubernetesDeployment.Annotations = mergeMetadata(kubernetesDeployment.Annotations, existingKubernetesDeployment.Annotations)
+	kubernetesDeployment.Spec.Template.Labels = mergeManagedLabels(kubernetesDeployment.Spec.Template.Labels, existingKubernetesDeployment.Spec.Template.Labels)
+	kubernetesDeployment.Spec.Template.Annotations = mergeMetadata(kubernetesDeployment.Spec.Template.Annotations, existingKubernetesDeployment.Spec.Template.Annotations)
 
-	current.Labels = desired.Labels
-	current.Annotations = desired.Annotations
-	current.OwnerReferences = desired.OwnerReferences
-	current.Spec = desired.Spec
-	if equality.Semantic.DeepEqual(current.Labels, original.Labels) &&
-		equality.Semantic.DeepEqual(current.Annotations, original.Annotations) &&
-		equality.Semantic.DeepEqual(current.OwnerReferences, original.OwnerReferences) &&
-		equality.Semantic.DeepEqual(current.Spec, original.Spec) {
+	existingKubernetesDeployment.Labels = kubernetesDeployment.Labels
+	existingKubernetesDeployment.Annotations = kubernetesDeployment.Annotations
+	existingKubernetesDeployment.OwnerReferences = kubernetesDeployment.OwnerReferences
+	existingKubernetesDeployment.Spec = kubernetesDeployment.Spec
+	if equality.Semantic.DeepEqual(existingKubernetesDeployment.Labels, originalKubernetesDeployment.Labels) &&
+		equality.Semantic.DeepEqual(existingKubernetesDeployment.Annotations, originalKubernetesDeployment.Annotations) &&
+		equality.Semantic.DeepEqual(existingKubernetesDeployment.OwnerReferences, originalKubernetesDeployment.OwnerReferences) &&
+		equality.Semantic.DeepEqual(existingKubernetesDeployment.Spec, originalKubernetesDeployment.Spec) {
 		return nil
 	}
-	if err := r.Patch(ctx, current, client.MergeFrom(original)); err != nil && !namespaceIsTerminatingError(err) {
+	if err := r.Patch(ctx, existingKubernetesDeployment, client.MergeFrom(originalKubernetesDeployment)); err != nil && !namespaceIsTerminatingError(err) {
 		return err
 	}
 	return nil
 }
 
-func (r *DeploymentReconciler) createOrUpdateDeploymentEnvSecret(ctx context.Context, deployment *kudeployv1alpha1.Deployment) error {
-	desired, err := r.deploymentEnvSecret(ctx, deployment)
+func (r *DeploymentReconciler) createOrUpdateDeploymentEnvSecret(ctx context.Context, kudeployDeployment *kudeployv1alpha1.Deployment) error {
+	deploymentEnvSecret, err := r.buildDeploymentEnvSecret(ctx, kudeployDeployment)
 	if err != nil {
 		if namespaceIsTerminatingError(err) {
 			return nil
 		}
 		return err
 	}
-	if err := controllerutil.SetControllerReference(deployment, desired, r.Scheme); err != nil {
+	if err := controllerutil.SetControllerReference(kudeployDeployment, deploymentEnvSecret, r.Scheme); err != nil {
 		return err
 	}
 
-	current := &corev1.Secret{}
-	err = r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+	existingDeploymentEnvSecret := &corev1.Secret{}
+	err = r.Get(ctx, client.ObjectKeyFromObject(deploymentEnvSecret), existingDeploymentEnvSecret)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, deploymentEnvSecret); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return err
 		}
 		return nil
@@ -169,84 +169,84 @@ func (r *DeploymentReconciler) createOrUpdateDeploymentEnvSecret(ctx context.Con
 		return err
 	}
 
-	original := current.DeepCopy()
-	current.Labels = mergeManagedLabels(desired.Labels, current.Labels)
-	current.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
-	current.OwnerReferences = desired.OwnerReferences
-	if current.Type == "" {
-		current.Type = desired.Type
+	originalDeploymentEnvSecret := existingDeploymentEnvSecret.DeepCopy()
+	existingDeploymentEnvSecret.Labels = mergeManagedLabels(deploymentEnvSecret.Labels, existingDeploymentEnvSecret.Labels)
+	existingDeploymentEnvSecret.Annotations = mergeMetadata(deploymentEnvSecret.Annotations, existingDeploymentEnvSecret.Annotations)
+	existingDeploymentEnvSecret.OwnerReferences = deploymentEnvSecret.OwnerReferences
+	if existingDeploymentEnvSecret.Type == "" {
+		existingDeploymentEnvSecret.Type = deploymentEnvSecret.Type
 	}
-	if err := r.Patch(ctx, current, client.MergeFrom(original)); err != nil && !namespaceIsTerminatingError(err) {
+	if err := r.Patch(ctx, existingDeploymentEnvSecret, client.MergeFrom(originalDeploymentEnvSecret)); err != nil && !namespaceIsTerminatingError(err) {
 		return err
 	}
 	return nil
 }
 
-func (r *DeploymentReconciler) deploymentEnvSecret(ctx context.Context, deployment *kudeployv1alpha1.Deployment) (*corev1.Secret, error) {
-	source := &corev1.Secret{}
-	if err := r.Get(ctx, client.ObjectKey{Name: serviceEnvSecretNameFor(deployment.Spec.ServiceName), Namespace: deployment.Namespace}, source); err != nil {
+func (r *DeploymentReconciler) buildDeploymentEnvSecret(ctx context.Context, kudeployDeployment *kudeployv1alpha1.Deployment) (*corev1.Secret, error) {
+	serviceEnvSecret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: serviceEnvSecretNameFor(kudeployDeployment.Spec.ServiceName), Namespace: kudeployDeployment.Namespace}, serviceEnvSecret); err != nil {
 		return nil, err
 	}
 
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        deploymentEnvSecretNameFor(deployment.Name),
-			Namespace:   deployment.Namespace,
-			Labels:      deploymentManagedLabels(deployment.Namespace, deployment.Spec.ServiceName, deployment.Name),
-			Annotations: copyStringMap(source.Annotations),
+			Name:        deploymentEnvSecretNameFor(kudeployDeployment.Name),
+			Namespace:   kudeployDeployment.Namespace,
+			Labels:      deploymentManagedLabels(kudeployDeployment.Namespace, kudeployDeployment.Spec.ServiceName, kudeployDeployment.Name),
+			Annotations: copyStringMap(serviceEnvSecret.Annotations),
 		},
 		Type: corev1.SecretTypeOpaque,
-		Data: copySecretData(source.Data),
+		Data: copySecretData(serviceEnvSecret.Data),
 	}, nil
 }
 
-func (r *DeploymentReconciler) updateDeploymentStatus(ctx context.Context, deployment *kudeployv1alpha1.Deployment, kubernetesDeployment *appsv1.Deployment) error {
-	original := deployment.DeepCopy()
-	deployment.Status.KubernetesDeploymentName = kubernetesDeployment.Name
+func (r *DeploymentReconciler) updateDeploymentStatus(ctx context.Context, kudeployDeployment *kudeployv1alpha1.Deployment, kubernetesDeployment *appsv1.Deployment) error {
+	originalKudeployDeployment := kudeployDeployment.DeepCopy()
+	kudeployDeployment.Status.KubernetesDeploymentName = kubernetesDeployment.Name
 	if isKubernetesDeploymentAvailable(kubernetesDeployment) {
-		meta.SetStatusCondition(&deployment.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&kudeployDeployment.Status.Conditions, metav1.Condition{
 			Type:    deploymentReadyCondition,
 			Status:  metav1.ConditionTrue,
 			Reason:  "KubernetesDeploymentAvailable",
 			Message: "Kubernetes Deployment is available.",
 		})
 	} else {
-		meta.SetStatusCondition(&deployment.Status.Conditions, metav1.Condition{
+		meta.SetStatusCondition(&kudeployDeployment.Status.Conditions, metav1.Condition{
 			Type:    deploymentReadyCondition,
 			Status:  metav1.ConditionFalse,
 			Reason:  "KubernetesDeploymentProgressing",
 			Message: "Kubernetes Deployment is not available yet.",
 		})
 	}
-	return ignoreConflict(r.Status().Patch(ctx, deployment, client.MergeFrom(original)))
+	return ignoreConflict(r.Status().Patch(ctx, kudeployDeployment, client.MergeFrom(originalKudeployDeployment)))
 }
 
-func ensureDeploymentMetadata(deployment *kudeployv1alpha1.Deployment) bool {
-	desiredLabels := deploymentManagedLabels(deployment.Namespace, deployment.Spec.ServiceName, deployment.Name)
+func ensureDeploymentMetadata(kudeployDeployment *kudeployv1alpha1.Deployment) bool {
+	labels := deploymentManagedLabels(kudeployDeployment.Namespace, kudeployDeployment.Spec.ServiceName, kudeployDeployment.Name)
 	changed := false
-	if deployment.Labels == nil {
-		deployment.Labels = map[string]string{}
+	if kudeployDeployment.Labels == nil {
+		kudeployDeployment.Labels = map[string]string{}
 		changed = true
 	}
-	for key, value := range desiredLabels {
-		if deployment.Labels[key] != value {
-			deployment.Labels[key] = value
+	for key, value := range labels {
+		if kudeployDeployment.Labels[key] != value {
+			kudeployDeployment.Labels[key] = value
 			changed = true
 		}
 	}
 	return changed
 }
 
-func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.Deployment {
-	labels := deploymentManagedLabels(deployment.Namespace, deployment.Spec.ServiceName, deployment.Name)
+func buildKubernetesDeployment(kudeployDeployment *kudeployv1alpha1.Deployment) *appsv1.Deployment {
+	labels := deploymentManagedLabels(kudeployDeployment.Namespace, kudeployDeployment.Spec.ServiceName, kudeployDeployment.Name)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deployment.Name,
-			Namespace: deployment.Namespace,
+			Name:      kudeployDeployment.Name,
+			Namespace: kudeployDeployment.Namespace,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas:             replicasFor(deployment),
+			Replicas:             replicasFor(kudeployDeployment),
 			RevisionHistoryLimit: ptrInt32(0),
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
@@ -256,7 +256,7 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 			},
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
-					deploymentLabel: deployment.Name,
+					deploymentLabel: kudeployDeployment.Name,
 				},
 			},
 			Template: corev1.PodTemplateSpec{
@@ -264,21 +264,21 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 					Labels: labels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: deployment.Spec.ServiceAccountName,
+					ServiceAccountName: kudeployDeployment.Spec.ServiceAccountName,
 					Containers: []corev1.Container{
 						{
-							Name:            deployment.Spec.ServiceName,
-							Image:           deployment.Spec.Image,
+							Name:            kudeployDeployment.Spec.ServiceName,
+							Image:           kudeployDeployment.Spec.Image,
 							ImagePullPolicy: corev1.PullAlways,
-							Command:         deployment.Spec.Command,
-							Args:            deployment.Spec.Args,
-							Resources:       deployment.Spec.Resources,
-							Env:             deployment.Spec.Env,
-							EnvFrom:         containerEnvFromFor(deployment),
-							Ports:           containerPortsFor(deployment.Spec.Ports),
-							ReadinessProbe:  deployment.Spec.ReadinessProbe,
-							LivenessProbe:   deployment.Spec.LivenessProbe,
-							StartupProbe:    deployment.Spec.StartupProbe,
+							Command:         kudeployDeployment.Spec.Command,
+							Args:            kudeployDeployment.Spec.Args,
+							Resources:       kudeployDeployment.Spec.Resources,
+							Env:             kudeployDeployment.Spec.Env,
+							EnvFrom:         containerEnvFromFor(kudeployDeployment),
+							Ports:           containerPortsFor(kudeployDeployment.Spec.Ports),
+							ReadinessProbe:  kudeployDeployment.Spec.ReadinessProbe,
+							LivenessProbe:   kudeployDeployment.Spec.LivenessProbe,
+							StartupProbe:    kudeployDeployment.Spec.StartupProbe,
 						},
 					},
 				},
@@ -287,20 +287,20 @@ func buildKubernetesDeployment(deployment *kudeployv1alpha1.Deployment) *appsv1.
 	}
 }
 
-func replicasFor(deployment *kudeployv1alpha1.Deployment) *int32 {
-	if deployment.Spec.Replicas == nil {
+func replicasFor(kudeployDeployment *kudeployv1alpha1.Deployment) *int32 {
+	if kudeployDeployment.Spec.Replicas == nil {
 		return ptrInt32(1)
 	}
-	return deployment.Spec.Replicas
+	return kudeployDeployment.Spec.Replicas
 }
 
-func containerEnvFromFor(deployment *kudeployv1alpha1.Deployment) []corev1.EnvFromSource {
-	envFrom := make([]corev1.EnvFromSource, 0, len(deployment.Spec.EnvFrom)+1)
-	envFrom = append(envFrom, deployment.Spec.EnvFrom...)
+func containerEnvFromFor(kudeployDeployment *kudeployv1alpha1.Deployment) []corev1.EnvFromSource {
+	envFrom := make([]corev1.EnvFromSource, 0, len(kudeployDeployment.Spec.EnvFrom)+1)
+	envFrom = append(envFrom, kudeployDeployment.Spec.EnvFrom...)
 	envFrom = append(envFrom, corev1.EnvFromSource{
 		SecretRef: &corev1.SecretEnvSource{
 			LocalObjectReference: corev1.LocalObjectReference{
-				Name: deploymentEnvSecretNameFor(deployment.Name),
+				Name: deploymentEnvSecretNameFor(kudeployDeployment.Name),
 			},
 		},
 	})
@@ -324,8 +324,8 @@ func targetPortFor(port kudeployv1alpha1.ServicePort) int32 {
 	return port.TargetPort
 }
 
-func isKubernetesDeploymentAvailable(deployment *appsv1.Deployment) bool {
-	for _, condition := range deployment.Status.Conditions {
+func isKubernetesDeploymentAvailable(kubernetesDeployment *appsv1.Deployment) bool {
+	for _, condition := range kubernetesDeployment.Status.Conditions {
 		if condition.Type == appsv1.DeploymentAvailable && condition.Status == corev1.ConditionTrue {
 			return true
 		}

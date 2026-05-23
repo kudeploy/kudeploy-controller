@@ -101,19 +101,19 @@ func (r *ServiceReconciler) reconcileNewServiceVersion(ctx context.Context, serv
 		return ctrl.Result{}, err
 	}
 
-	deployment := buildKudeployDeployment(service, version, deploymentName)
-	if err := controllerutil.SetControllerReference(service, deployment, r.Scheme); err != nil {
+	kudeployDeployment := buildKudeployDeployment(service, version, deploymentName)
+	if err := controllerutil.SetControllerReference(service, kudeployDeployment, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}
-	if err := r.createKudeployDeployment(ctx, deployment); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	if err := r.createOrUpdateStableKubernetesService(ctx, service, activeServiceSelector(service)); err != nil {
+	if err := r.createKudeployDeployment(ctx, kudeployDeployment); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	original := service.DeepCopy()
+	if err := r.createOrUpdateKubernetesService(ctx, service, activeDeploymentSelector(service)); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	originalService := service.DeepCopy()
 	service.Status.ObservedGeneration = service.Generation
 	service.Status.LatestVersion = version
 	service.Status.LatestDeploymentName = deploymentName
@@ -125,67 +125,67 @@ func (r *ServiceReconciler) reconcileNewServiceVersion(ctx context.Context, serv
 		Reason:  "DeploymentProgressing",
 		Message: "Latest Deployment is not ready yet.",
 	})
-	return ctrl.Result{}, r.patchServiceStatus(ctx, service, original)
+	return ctrl.Result{}, r.patchServiceStatus(ctx, service, originalService)
 }
 
 func (r *ServiceReconciler) createOrUpdateServiceEnvSecret(ctx context.Context, service *kudeployv1alpha1.Service) (*corev1.Secret, error) {
-	desired := serviceEnvSecret(service)
-	if err := controllerutil.SetControllerReference(service, desired, r.Scheme); err != nil {
+	envSecret := buildServiceEnvSecret(service)
+	if err := controllerutil.SetControllerReference(service, envSecret, r.Scheme); err != nil {
 		return nil, err
 	}
 
-	current := &corev1.Secret{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+	existingEnvSecret := &corev1.Secret{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(envSecret), existingEnvSecret)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, envSecret); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return nil, err
 		}
-		return desired, nil
+		return envSecret, nil
 	}
 	if err != nil {
 		if namespaceIsTerminatingError(err) {
-			return desired, nil
+			return envSecret, nil
 		}
 		return nil, err
 	}
-	original := current.DeepCopy()
-	current.Labels = mergeManagedLabels(desired.Labels, current.Labels)
-	current.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
-	current.OwnerReferences = desired.OwnerReferences
-	if current.Type == "" {
-		current.Type = desired.Type
+	originalEnvSecret := existingEnvSecret.DeepCopy()
+	existingEnvSecret.Labels = mergeManagedLabels(envSecret.Labels, existingEnvSecret.Labels)
+	existingEnvSecret.Annotations = mergeMetadata(envSecret.Annotations, existingEnvSecret.Annotations)
+	existingEnvSecret.OwnerReferences = envSecret.OwnerReferences
+	if existingEnvSecret.Type == "" {
+		existingEnvSecret.Type = envSecret.Type
 	}
-	if err := r.Patch(ctx, current, client.MergeFrom(original)); err != nil && !namespaceIsTerminatingError(err) {
+	if err := r.Patch(ctx, existingEnvSecret, client.MergeFrom(originalEnvSecret)); err != nil && !namespaceIsTerminatingError(err) {
 		return nil, err
 	}
-	return current, nil
+	return existingEnvSecret, nil
 }
 
 func (r *ServiceReconciler) reconcileServiceTraffic(ctx context.Context, service *kudeployv1alpha1.Service) (ctrl.Result, error) {
-	latestDeployment := &kudeployv1alpha1.Deployment{}
-	err := r.Get(ctx, client.ObjectKey{Name: service.Status.LatestDeploymentName, Namespace: service.Namespace}, latestDeployment)
+	latestKudeployDeployment := &kudeployv1alpha1.Deployment{}
+	err := r.Get(ctx, client.ObjectKey{Name: service.Status.LatestDeploymentName, Namespace: service.Namespace}, latestKudeployDeployment)
 	if apierrors.IsNotFound(err) {
-		original := service.DeepCopy()
+		originalService := service.DeepCopy()
 		meta.SetStatusCondition(&service.Status.Conditions, metav1.Condition{
 			Type:    serviceReadyCondition,
 			Status:  metav1.ConditionFalse,
 			Reason:  "DeploymentNotFound",
 			Message: "Latest Deployment does not exist.",
 		})
-		return ctrl.Result{}, r.patchServiceStatus(ctx, service, original)
+		return ctrl.Result{}, r.patchServiceStatus(ctx, service, originalService)
 	}
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	if !isKudeployDeploymentReady(latestDeployment) {
-		if err := r.createOrUpdateStableKubernetesService(ctx, service, activeServiceSelector(service)); err != nil {
+	if !isKudeployDeploymentReady(latestKudeployDeployment) {
+		if err := r.createOrUpdateKubernetesService(ctx, service, activeDeploymentSelector(service)); err != nil {
 			return ctrl.Result{}, err
 		}
 		if err := r.createOrUpdateRuntimeServiceAccount(ctx, service); err != nil {
 			return ctrl.Result{}, err
 		}
-		original := service.DeepCopy()
+		originalService := service.DeepCopy()
 		service.Status.ServiceAccountName = runtimeServiceAccountNameFor(service.Name)
 		meta.SetStatusCondition(&service.Status.Conditions, metav1.Condition{
 			Type:    serviceReadyCondition,
@@ -193,44 +193,44 @@ func (r *ServiceReconciler) reconcileServiceTraffic(ctx context.Context, service
 			Reason:  "DeploymentProgressing",
 			Message: "Latest Deployment is not ready yet.",
 		})
-		return ctrl.Result{}, r.patchServiceStatus(ctx, service, original)
+		return ctrl.Result{}, r.patchServiceStatus(ctx, service, originalService)
 	}
 
-	selector := map[string]string{deploymentLabel: latestDeployment.Name}
-	if err := r.createOrUpdateStableKubernetesService(ctx, service, selector); err != nil {
+	selector := map[string]string{deploymentLabel: latestKudeployDeployment.Name}
+	if err := r.createOrUpdateKubernetesService(ctx, service, selector); err != nil {
 		return ctrl.Result{}, err
 	}
 	if err := r.createOrUpdateRuntimeServiceAccount(ctx, service); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	original := service.DeepCopy()
+	originalService := service.DeepCopy()
 	service.Status.ServiceAccountName = runtimeServiceAccountNameFor(service.Name)
-	service.Status.ActiveVersion = latestDeployment.Spec.Version
-	service.Status.ActiveDeploymentName = latestDeployment.Name
+	service.Status.ActiveVersion = latestKudeployDeployment.Spec.Version
+	service.Status.ActiveDeploymentName = latestKudeployDeployment.Name
 	meta.SetStatusCondition(&service.Status.Conditions, metav1.Condition{
 		Type:    serviceReadyCondition,
 		Status:  metav1.ConditionTrue,
 		Reason:  "DeploymentReady",
 		Message: "Latest Deployment is ready and receiving traffic.",
 	})
-	return ctrl.Result{}, r.patchServiceStatus(ctx, service, original)
+	return ctrl.Result{}, r.patchServiceStatus(ctx, service, originalService)
 }
 
-func (r *ServiceReconciler) patchServiceStatus(ctx context.Context, service, original *kudeployv1alpha1.Service) error {
-	return ignoreConflict(r.Status().Patch(ctx, service, client.MergeFrom(original)))
+func (r *ServiceReconciler) patchServiceStatus(ctx context.Context, service, originalService *kudeployv1alpha1.Service) error {
+	return ignoreConflict(r.Status().Patch(ctx, service, client.MergeFrom(originalService)))
 }
 
 func (r *ServiceReconciler) createOrUpdateRuntimeServiceAccount(ctx context.Context, service *kudeployv1alpha1.Service) error {
-	desired := runtimeServiceAccount(service)
-	if err := controllerutil.SetControllerReference(service, desired, r.Scheme); err != nil {
+	serviceAccount := buildRuntimeServiceAccount(service)
+	if err := controllerutil.SetControllerReference(service, serviceAccount, r.Scheme); err != nil {
 		return err
 	}
 
-	current := &corev1.ServiceAccount{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+	existingServiceAccount := &corev1.ServiceAccount{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(serviceAccount), existingServiceAccount)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, serviceAccount); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return err
 		}
 		return nil
@@ -241,21 +241,21 @@ func (r *ServiceReconciler) createOrUpdateRuntimeServiceAccount(ctx context.Cont
 		}
 		return err
 	}
-	original := current.DeepCopy()
-	current.Labels = mergeManagedLabels(desired.Labels, current.Labels)
-	current.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
-	current.OwnerReferences = desired.OwnerReferences
-	if err := r.Patch(ctx, current, client.MergeFrom(original)); err != nil && !namespaceIsTerminatingError(err) {
+	originalServiceAccount := existingServiceAccount.DeepCopy()
+	existingServiceAccount.Labels = mergeManagedLabels(serviceAccount.Labels, existingServiceAccount.Labels)
+	existingServiceAccount.Annotations = mergeMetadata(serviceAccount.Annotations, existingServiceAccount.Annotations)
+	existingServiceAccount.OwnerReferences = serviceAccount.OwnerReferences
+	if err := r.Patch(ctx, existingServiceAccount, client.MergeFrom(originalServiceAccount)); err != nil && !namespaceIsTerminatingError(err) {
 		return err
 	}
 	return nil
 }
 
-func (r *ServiceReconciler) createKudeployDeployment(ctx context.Context, desired *kudeployv1alpha1.Deployment) error {
-	current := &kudeployv1alpha1.Deployment{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+func (r *ServiceReconciler) createKudeployDeployment(ctx context.Context, kudeployDeployment *kudeployv1alpha1.Deployment) error {
+	existingKudeployDeployment := &kudeployv1alpha1.Deployment{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(kudeployDeployment), existingKudeployDeployment)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, kudeployDeployment); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return err
 		}
 		return nil
@@ -266,16 +266,16 @@ func (r *ServiceReconciler) createKudeployDeployment(ctx context.Context, desire
 	return err
 }
 
-func (r *ServiceReconciler) createOrUpdateStableKubernetesService(ctx context.Context, service *kudeployv1alpha1.Service, selector map[string]string) error {
-	desired := stableKubernetesService(service, selector)
-	if err := controllerutil.SetControllerReference(service, desired, r.Scheme); err != nil {
+func (r *ServiceReconciler) createOrUpdateKubernetesService(ctx context.Context, service *kudeployv1alpha1.Service, selector map[string]string) error {
+	kubernetesService := buildKubernetesService(service, selector)
+	if err := controllerutil.SetControllerReference(service, kubernetesService, r.Scheme); err != nil {
 		return err
 	}
 
-	current := &corev1.Service{}
-	err := r.Get(ctx, client.ObjectKeyFromObject(desired), current)
+	existingKubernetesService := &corev1.Service{}
+	err := r.Get(ctx, client.ObjectKeyFromObject(kubernetesService), existingKubernetesService)
 	if apierrors.IsNotFound(err) {
-		if err := r.Create(ctx, desired); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
+		if err := r.Create(ctx, kubernetesService); err != nil && !apierrors.IsAlreadyExists(err) && !namespaceIsTerminatingError(err) {
 			return err
 		}
 		return nil
@@ -286,14 +286,14 @@ func (r *ServiceReconciler) createOrUpdateStableKubernetesService(ctx context.Co
 		}
 		return err
 	}
-	original := current.DeepCopy()
+	originalKubernetesService := existingKubernetesService.DeepCopy()
 
-	current.Labels = mergeManagedLabels(desired.Labels, current.Labels)
-	current.Annotations = mergeMetadata(desired.Annotations, current.Annotations)
-	current.OwnerReferences = desired.OwnerReferences
-	current.Spec.Ports = desired.Spec.Ports
-	current.Spec.Selector = desired.Spec.Selector
-	if err := r.Patch(ctx, current, client.MergeFrom(original)); err != nil && !namespaceIsTerminatingError(err) {
+	existingKubernetesService.Labels = mergeManagedLabels(kubernetesService.Labels, existingKubernetesService.Labels)
+	existingKubernetesService.Annotations = mergeMetadata(kubernetesService.Annotations, existingKubernetesService.Annotations)
+	existingKubernetesService.OwnerReferences = kubernetesService.OwnerReferences
+	existingKubernetesService.Spec.Ports = kubernetesService.Spec.Ports
+	existingKubernetesService.Spec.Selector = kubernetesService.Spec.Selector
+	if err := r.Patch(ctx, existingKubernetesService, client.MergeFrom(originalKubernetesService)); err != nil && !namespaceIsTerminatingError(err) {
 		return err
 	}
 	return nil
@@ -316,40 +316,40 @@ func ensureServiceMetadata(service *kudeployv1alpha1.Service) bool {
 	return changed
 }
 
-func buildKudeployDeployment(service *kudeployv1alpha1.Service, version int64, name string) *kudeployv1alpha1.Deployment {
+func buildKudeployDeployment(kudeployService *kudeployv1alpha1.Service, version int64, name string) *kudeployv1alpha1.Deployment {
 	return &kudeployv1alpha1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
-			Namespace: service.Namespace,
-			Labels:    deploymentManagedLabels(service.Namespace, service.Name, name),
+			Namespace: kudeployService.Namespace,
+			Labels:    deploymentManagedLabels(kudeployService.Namespace, kudeployService.Name, name),
 		},
 		Spec: kudeployv1alpha1.DeploymentSpec{
-			ServiceName:        service.Name,
+			ServiceName:        kudeployService.Name,
 			Version:            version,
-			ServiceAccountName: runtimeServiceAccountNameFor(service.Name),
-			Replicas:           service.Spec.Replicas,
-			Image:              service.Spec.Image,
-			Command:            service.Spec.Command,
-			Args:               service.Spec.Args,
-			Resources:          service.Spec.Resources,
-			Ports:              service.Spec.Ports,
-			Env:                service.Spec.Env,
-			EnvFrom:            service.Spec.EnvFrom,
-			ReadinessProbe:     service.Spec.ReadinessProbe,
-			LivenessProbe:      service.Spec.LivenessProbe,
-			StartupProbe:       service.Spec.StartupProbe,
+			ServiceAccountName: runtimeServiceAccountNameFor(kudeployService.Name),
+			Replicas:           kudeployService.Spec.Replicas,
+			Image:              kudeployService.Spec.Image,
+			Command:            kudeployService.Spec.Command,
+			Args:               kudeployService.Spec.Args,
+			Resources:          kudeployService.Spec.Resources,
+			Ports:              kudeployService.Spec.Ports,
+			Env:                kudeployService.Spec.Env,
+			EnvFrom:            kudeployService.Spec.EnvFrom,
+			ReadinessProbe:     kudeployService.Spec.ReadinessProbe,
+			LivenessProbe:      kudeployService.Spec.LivenessProbe,
+			StartupProbe:       kudeployService.Spec.StartupProbe,
 		},
 	}
 }
 
-func serviceEnvSecret(service *kudeployv1alpha1.Service) *corev1.Secret {
+func buildServiceEnvSecret(kudeployService *kudeployv1alpha1.Service) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceEnvSecretNameFor(service.Name),
-			Namespace: service.Namespace,
+			Name:      serviceEnvSecretNameFor(kudeployService.Name),
+			Namespace: kudeployService.Namespace,
 			Labels: map[string]string{
-				projectLabel:   service.Namespace,
-				serviceLabel:   service.Name,
+				projectLabel:   kudeployService.Namespace,
+				serviceLabel:   kudeployService.Name,
 				managedByLabel: managedByLabelValue,
 			},
 		},
@@ -357,34 +357,34 @@ func serviceEnvSecret(service *kudeployv1alpha1.Service) *corev1.Secret {
 	}
 }
 
-func runtimeServiceAccount(service *kudeployv1alpha1.Service) *corev1.ServiceAccount {
+func buildRuntimeServiceAccount(kudeployService *kudeployv1alpha1.Service) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      runtimeServiceAccountNameFor(service.Name),
-			Namespace: service.Namespace,
+			Name:      runtimeServiceAccountNameFor(kudeployService.Name),
+			Namespace: kudeployService.Namespace,
 			Labels: map[string]string{
-				projectLabel:   service.Namespace,
-				serviceLabel:   service.Name,
+				projectLabel:   kudeployService.Namespace,
+				serviceLabel:   kudeployService.Name,
 				managedByLabel: managedByLabelValue,
 			},
 		},
 	}
 }
 
-func stableKubernetesService(service *kudeployv1alpha1.Service, selector map[string]string) *corev1.Service {
+func buildKubernetesService(kudeployService *kudeployv1alpha1.Service, selector map[string]string) *corev1.Service {
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      service.Name,
-			Namespace: service.Namespace,
+			Name:      kudeployService.Name,
+			Namespace: kudeployService.Namespace,
 			Labels: map[string]string{
-				projectLabel:   service.Namespace,
-				serviceLabel:   service.Name,
+				projectLabel:   kudeployService.Namespace,
+				serviceLabel:   kudeployService.Name,
 				managedByLabel: managedByLabelValue,
 			},
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: selector,
-			Ports:    servicePortsFor(service.Spec.Ports),
+			Ports:    servicePortsFor(kudeployService.Spec.Ports),
 		},
 	}
 }
@@ -402,15 +402,15 @@ func servicePortsFor(ports []kudeployv1alpha1.ServicePort) []corev1.ServicePort 
 	return servicePorts
 }
 
-func activeServiceSelector(service *kudeployv1alpha1.Service) map[string]string {
+func activeDeploymentSelector(service *kudeployv1alpha1.Service) map[string]string {
 	if service.Status.ActiveDeploymentName == "" {
 		return nil
 	}
 	return map[string]string{deploymentLabel: service.Status.ActiveDeploymentName}
 }
 
-func isKudeployDeploymentReady(deployment *kudeployv1alpha1.Deployment) bool {
-	condition := meta.FindStatusCondition(deployment.Status.Conditions, serviceReadyCondition)
+func isKudeployDeploymentReady(kudeployDeployment *kudeployv1alpha1.Deployment) bool {
+	condition := meta.FindStatusCondition(kudeployDeployment.Status.Conditions, serviceReadyCondition)
 	return condition != nil && condition.Status == metav1.ConditionTrue
 }
 
